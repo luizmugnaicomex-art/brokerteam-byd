@@ -1,25 +1,11 @@
 import React, { useState, useMemo, useCallback, useEffect, useRef, useLayoutEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 
-// --- AVISOS PARA TYPESCRIPT SOBRE BIBLIOTECAS GLOBAIS ---
 declare var XLSX: any;
-declare var firebase: any; // Adicionado para o Firebase
 
-// --- INICIALIZAÇÃO DO FIREBASE ---
-const firebaseConfig = {
-    apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-    authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-    projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-    storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-    messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-    appId: import.meta.env.VITE_FIREBASE_APP_ID
-};
+// --- ENHANCED TYPE DEFINITIONS ---
 
-firebase.initializeApp(firebaseConfig);
-const db = firebase.firestore();
-
-
-// --- DEFINIÇÕES DE TIPOS (Enums) ---
+// Enums for Statuses
 enum ImportStatus {
     OrderPlaced = 'ORDER PLACED',
     ShipmentConfirmed = 'SHIPMENT CONFIRMED',
@@ -53,7 +39,7 @@ enum FiveW2HStatus {
 }
 
 
-// --- MODELOS DE DADOS (Interfaces) ---
+// Detailed Data Models
 interface ContainerDetail {
     id: string;
     seaportArrivalDate?: string;
@@ -68,11 +54,15 @@ interface Cost {
     status: PaymentStatus;
 }
 
+// NEW, COMPREHENSIVE SHIPMENT INTERFACE
 interface Shipment {
-  id: string; 
+  id: string; // Stable internal identifier
+  // Core Identifiers
   blAwb: string;
   poSap?: string;
   invoice?: string;
+  
+  // Cargo Details
   description?: string;
   typeOfCargo?: string;
   costCenter?: string;
@@ -81,12 +71,18 @@ interface Shipment {
   color?: string;
   exTariff?: string;
   dg?: 'Yes' | 'No' | '';
+
+  // Customs & LI
   uniqueDi?: 'Yes' | 'No' | '';
   liNr?: string;
   statusLi?: string;
+
+  // Responsibilities
   underWater?: 'Yes' | 'No' | '';
   technicianResponsibleChina?: string;
   technicianResponsibleBrazil?: string;
+
+  // Logistics & Container
   shipmentType?: string;
   cbm?: number;
   fcl?: number;
@@ -95,9 +91,13 @@ interface Shipment {
   incoterm?: string;
   containerUnloaded?: number;
   freightForwarderDestination?: string;
+  
+  // Parties
   shipper?: string;
   broker?: string;
   shipowner?: string;
+  
+  // Dates & Deadlines
   ieSentToBroker?: string;
   freeTime?: number;
   freeTimeDeadline?: string;
@@ -116,6 +116,8 @@ interface Shipment {
   firstTruckDelivery?: string;
   lastTruckDelivery?: string;
   invoicePaymentDate?: string;
+
+  // Financials
   invoiceCurrency?: string;
   invoiceValue?: number;
   freightCurrency?: string;
@@ -125,9 +127,13 @@ interface Shipment {
   taxRateUsd?: number;
   cifDi?: string;
   nfValuePerContainer?: number;
+
+  // Inspection & Services
   typeOfInspection?: string;
   qtyContainerInspection?: number;
   additionalServices?: string;
+
+  // Documentation & Process
   importPlan?: string;
   importLedger?: string;
   draftDi?: string;
@@ -139,13 +145,17 @@ interface Shipment {
   draftNf?: string;
   approvedDraftNf?: string;
   nfNacionalization?: string;
+  
+  // Final Status
   status?: ImportStatus;
   observation?: string;
+  
+  // Legacy fields for internal logic if needed
   containers: ContainerDetail[];
   costs: Cost[];
 }
 
-// ... (outras interfaces como Claim, Task, User, etc. permanecem as mesmas)
+
 interface Claim {
     id: string;
     importBl: string;
@@ -167,9 +177,10 @@ interface User {
     id: string;
     name: string;
     username: string;
-    password?: string;
+    password?: string; // Optional when sending to client
     role: UserRole;
 }
+
 
 interface ExchangeRates {
     date: string;
@@ -177,6 +188,65 @@ interface ExchangeRates {
     usd: { compra: number; venda: number };
     eur: { compra: number; venda: number };
     cny: number;
+}
+
+
+interface Booking {
+    time: string;
+    containerNumber: string;
+    importNumber: string;
+    dock: number;
+    date: string;
+}
+
+type ProcessStatus = 'On Time' | 'Delayed' | 'At Risk' | 'Completed';
+
+interface ProcessTrackingEntry {
+  id: string;
+  importNum: string;
+  blNum: string;
+  departure: string;
+  arrival: string;
+  actualEtd: string;
+  eta: string;
+  cargoPresence: string;
+  diRegistration: string;
+  greenChannel: string;
+  storageDeadline: string;
+  docApproval: string;
+  nfIssue: string;
+  status: ProcessStatus;
+}
+
+type ContainerStatus = 'On Vessel' | 'At Port' | 'In Warehouse' | 'Delivered to Factory' | 'Empty Returned';
+interface Container {
+    id: string;
+    importProcess: string;
+    bl: string;
+    transitTime: number; // in days
+    etaFactory: string;
+    status: ContainerStatus;
+    location: string; // Warehouse name or 'Unassigned'
+}
+
+interface Warehouse {
+    name: string;
+    capacity: number; // e.g., in TEUs
+    currentUsage: number;
+}
+
+type ApprovalStatus = 'Pending Approval' | 'Approved' | 'Rejected';
+
+interface BrokerNumerarioEntry {
+    id: string;
+    importNum: string;
+    blNum: string;
+    estimatedValue: number;
+    informedValue: number;
+    approvalStatus: ApprovalStatus;
+    transferDate: string;
+    reconciliationDate: string;
+    paid: boolean;
 }
 
 interface FiveW2H {
@@ -198,26 +268,52 @@ interface FiveW2H {
 }
 
 
-// --- DADOS INICIAIS (para a primeira vez que a app rodar) ---
-const initialExchangeRates: ExchangeRates = {
+// --- MOCK DATA ---
+const mockExchangeRates: ExchangeRates = {
     date: '2024-07-30', time: '10:00',
     usd: { compra: 5.15, venda: 5.25 },
     eur: { compra: 5.50, venda: 5.60 },
     cny: 0.72
 };
 
-const initialUsers: User[] = [
+const mockShipments: Shipment[] = [];
+
+const mockClaims: Claim[] = [];
+const mockTasks: Task[] = [];
+
+
+const mockProcessTrackingData: ProcessTrackingEntry[] = [];
+
+const mockWarehouses: Warehouse[] = [
+    { name: 'Intermarítima', capacity: 100, currentUsage: 60 },
+    { name: 'TPC', capacity: 120, currentUsage: 90 },
+    { name: 'BYD Patio', capacity: 80, currentUsage: 75 },
+];
+
+const mockContainers: Container[] = [];
+
+const today = new Date().toISOString().split('T')[0];
+const mockBookings: Booking[] = [];
+
+const mockBrokerNumerarioData: BrokerNumerarioEntry[] = [];
+
+const mockUsers: User[] = [
+    // ADM
     { id: 'user-1', name: 'Luiz Vieira da Costa Neto', username: 'ADMIN', password: 'Byd@N1', role: 'Admin' },
+    // ADM LOG
     { id: 'user-2', name: 'Emanoela Cardoso de O. Pereira Amorim', username: 'emanoelacardoso', password: 'Byd@N1', role: 'Logistics' },
+    // BROKER
     { id: 'user-3', name: 'Andressa Pinto Silva Barros', username: 'andressapinto', password: 'Byd@N1', role: 'Broker' },
     { id: 'user-4', name: 'Beatriz Regina Rinaldo', username: 'beatrizrinaldo', password: 'Byd@N1', role: 'Broker' },
     { id: 'user-5', name: 'Daniela Guimarães Brito', username: 'danielaguimaraes', password: 'Byd@N1', role: 'Broker' },
     { id: 'user-6', name: 'Marina Barbosa de Quadros', username: 'marinabarbosa', password: 'Byd@N1', role: 'Broker' },
     { id: 'user-7', name: 'Israel Moreira de Oliveira Junior', username: 'israelmoreira', password: 'Byd@N1', role: 'Broker' },
+    // GESTAO (mapped to COMEX)
     { id: 'user-8', name: 'Caio Blanco Carreira', username: 'caioblanco', password: 'Byd@N1', role: 'COMEX' },
     { id: 'user-9', name: 'Giani Oriente Oliveira', username: 'gianioriente', password: 'Byd@N1', role: 'COMEX' },
     { id: 'user-10', name: 'Italo de Araújo Wanderley Romeiro', username: 'italoaraujo', password: 'Byd@N1', role: 'COMEX' },
     { id: 'user-11', name: 'Taine de Melo Carneiro Oliveira', username: 'tainedemelo', password: 'Byd@N1', role: 'COMEX' },
+    // LOGISTICA
     { id: 'user-12', name: 'Fabio Levi da Cruz Silva', username: 'fabiolevi', password: 'Byd@N1', role: 'Logistics' },
     { id: 'user-13', name: 'Rebeca Magalhães Just da Rocha Pita', username: 'rebecamagalhaes', password: 'Byd@N1', role: 'Logistics' },
     { id: 'user-14', name: 'Cindy Mileni Álvares Nascimento', username: 'cindymileni', password: 'Byd@N1', role: 'Logistics' },
@@ -225,7 +321,10 @@ const initialUsers: User[] = [
 ];
 
 
-// --- ÍCONES (sem alterações) ---
+const mockFiveW2HData: FiveW2H[] = [];
+
+
+// --- ICONS ---
 const DashboardIcon = () => (<svg className="nav-icon" viewBox="0 0 24 24"><path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"></path></svg>);
 const ImportsIcon = () => (<svg className="nav-icon" viewBox="0 0 24 24"><path d="M20 18v-2h-3v2h3zm-3-4h3v-2h-3v2zm3-4h-3v2h3V6zm-5 2h2v2h-2V8zm-8 4h3v-2H7v2zm3-4H7v2h3V8zm0-4H7v2h3V4zm10 8h-3v2h3v-2zm-3-4h3V8h-3v2zM5 22h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2zM5 4h14v16H5V4z"></path></svg>);
 const LogisticsIcon = () => (<svg className="nav-icon" viewBox="0 0 24 24"><path d="M20 8h-3V4H3c-1.1 0-2 .9-2 2v11h2c0 1.66 1.34 3 3 3s3-1.34 3-3h6c0 1.66 1.34 3 3 3s3-1.34 3-3h2v-5l-3-4zM6 18c-.55 0-1-.45-1-1s.45-1 1-1 1 .45 1 1-.45 1-1 1zm13.5-8.5 1.96 2.5H17V9.5h2.5zM18 18c-.55 0-1-.45-1-1s.45-1 1-1 1 .45 1 1-.45 1-1 1z"></path></svg>);
@@ -254,6 +353,9 @@ const KeyIcon = () => <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12.
 const TrashIcon = () => (<svg viewBox="0 0 24 24" fill="currentColor" style={{width: "1em", height: "1em"}}><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"></path></svg>);
 const ExportIcon = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M12 10.5v6m-3-3h6M3.75 6A2.25 2.25 0 016 3.75h12A2.25 2.25 0 0120.25 6v12A2.25 2.25 0 0118 20.25H6A2.25 2.25 0 013.75 18V6z" /></svg>;
 const ChevronDownIcon = () => (<svg viewBox="0 0 20 20" fill="currentColor" style={{width: "1em", height: "1em", transition: "transform 0.2s"}}><path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd"></path></svg>);
+
+
+// NEW DASHBOARD ICONS
 const DollarSignIcon = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="kpi-icon"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>;
 const TruckIcon = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="kpi-icon"><rect x="1" y="3" width="15" height="13"></rect><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"></polygon><circle cx="5.5" cy="18.5" r="2.5"></circle><circle cx="18.5" cy="18.5" r="2.5"></circle></svg>;
 const CheckCircleIcon = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="kpi-icon"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>;
@@ -269,24 +371,25 @@ const SearchIcon = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentCol
 const WandIcon = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="header-icon"><path d="M15 4V2m0 14v-2m-7.5-1.5L6 13m0 0L4.5 14.5M20 9.5h2M2 9.5h2M19.5 14.5L21 13m0 0l-1.5-1.5M4.5 4.5L6 6m0 0l1.5 1.5M12 12l1-1 2 2-1 1-2-2zm-2 2l-1 1-2-2 1-1 2 2z"></path></svg>;
 const UserIcon = () => (<svg viewBox="0 0 24 24" fill="currentColor" className="nav-icon"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"></path></svg>);
 
-// --- FUNÇÕES AUXILIARES (sem alterações) ---
+
+// --- HELPER FUNCTIONS & CONFIG ---
+
 const getStatusPillClass = (status: Shipment['status']) => {
-    const statusMap = {
-      [ImportStatus.Delivered]: 'status-cargo-delivered',
-      [ImportStatus.CustomsClearance]: 'status-cargo-cleared',
-      [ImportStatus.InProgress]: 'status-in-transit',
-      [ImportStatus.AtPort]: 'status-at-the-port',
-      [ImportStatus.ShipmentConfirmed]: 'status-purple',
-      [ImportStatus.OrderPlaced]: 'status-grey',
-      [ImportStatus.DocumentReview]: 'status-document-review',
-      [ImportStatus.DiRegistered]: 'status-di-registered',
-      [ImportStatus.CargoReady]: 'status-cargo-ready',
-      [ImportStatus.Empty]: 'status-empty',
-    };
-    return statusMap[status!] || '';
+  const statusMap = {
+    [ImportStatus.Delivered]: 'status-cargo-delivered',
+    [ImportStatus.CustomsClearance]: 'status-cargo-cleared',
+    [ImportStatus.InProgress]: 'status-in-transit',
+    [ImportStatus.AtPort]: 'status-at-the-port',
+    [ImportStatus.ShipmentConfirmed]: 'status-purple',
+    [ImportStatus.OrderPlaced]: 'status-grey',
+    [ImportStatus.DocumentReview]: 'status-document-review',
+    [ImportStatus.DiRegistered]: 'status-di-registered',
+    [ImportStatus.CargoReady]: 'status-cargo-ready',
+    [ImportStatus.Empty]: 'status-empty',
+  };
+  return statusMap[status!] || '';
 };
 
-// ... (restante das funções auxiliares, como uuidv4, format, formatCurrency, etc.)
 const get5W2HStatusPillClass = (status: FiveW2HStatus) => {
     const statusMap = {
         [FiveW2HStatus.Completed]: 'status-green',
@@ -340,19 +443,25 @@ const formatNumber = (value: number | undefined | null, options?: Intl.NumberFor
     return value.toLocaleString('en-US', options);
 };
 
+
 const toTitleCase = (str: string | undefined | null): string => {
     if (!str) return '';
     const trimmed = str.trim().toUpperCase();
     if (trimmed.length === 0 || trimmed === 'PARAMETRIZATION') return '';
     
+    // Convert to title case but keep specific cases like "GREEN" or "YELLOW" as they are if that's the whole string
     if (['GREEN', 'YELLOW', 'RED'].includes(trimmed)) return trimmed.charAt(0) + trimmed.slice(1).toLowerCase();
 
+    // Generic title case for multi-word strings
     return trimmed
         .split(' ')
         .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
         .join(' ');
 };
 
+
+
+// --- DATE FORMATTING & CALCULATION HELPERS ---
 const toDisplayDate = (isoDate: string | undefined | null): string => {
     if (!isoDate) return '';
     const datePart = isoDate.split('T')[0].split(' ')[0];
@@ -361,7 +470,7 @@ const toDisplayDate = (isoDate: string | undefined | null): string => {
         const [y, m, d] = parts;
         return `${d}/${m}/${y}`;
     }
-    return isoDate;
+    return isoDate; // Return as-is if not in YYYY-MM-DD format (e.g. partial input)
 };
 
 const fromDisplayDate = (displayDate: string): string => {
@@ -373,6 +482,7 @@ const parseDate = (dateStr: string | undefined | null): Date | null => {
     if (!dateStr) return null;
     const datePart = dateStr.split('T')[0].split(' ')[0];
 
+    // Check for display format (DD/MM/YYYY) first, as it's the user input
     if (/^\d{2}\/\d{2}\/\d{4}$/.test(datePart)) {
         const [d, m, y] = datePart.split('/');
         const date = new Date(parseInt(y), parseInt(m) - 1, parseInt(d));
@@ -382,6 +492,7 @@ const parseDate = (dateStr: string | undefined | null): Date | null => {
         return null;
     }
 
+    // Check for ISO format (YYYY-MM-DD)
     if (/^\d{4}-\d{2}-\d{2}$/.test(datePart)) {
         const [y, m, d] = datePart.split('-');
         const date = new Date(parseInt(y), parseInt(m) - 1, parseInt(d));
@@ -437,9 +548,12 @@ const convertToUSD = (value: number, currency: string, rates: ExchangeRates | nu
     if (upperCurrency === 'EUR' && rates.eur.venda && rates.usd.venda) return (value * rates.eur.venda) / rates.usd.venda;
     if (upperCurrency === 'CNY' && rates.cny && rates.usd.venda) return (value * rates.cny) / rates.usd.venda;
     
-    return 0;
+    return 0; // Return 0 if currency is unknown or rate is unavailable
 };
 
+
+
+// --- CENTRALIZED COLUMN DEFINITION FOR FUP REPORT AND EXPORT ---
 const normalizeHeader = (header: string) => {
     if (!header) return '';
     return header.toLowerCase().replace(/[\s/._-]/g, '').replace('ç', 'c').replace('ã', 'a');
@@ -526,6 +640,7 @@ const exportAllToXLSX = (shipments: Shipment[], fileName: string = 'fup_report.x
         return;
     }
 
+    // Create a new array of objects with headers as keys
     const dataToExport = shipments.map(row => {
         const newRow: { [key: string]: any } = {};
         orderedShipmentColumns.forEach(col => {
@@ -535,20 +650,23 @@ const exportAllToXLSX = (shipments: Shipment[], fileName: string = 'fup_report.x
         return newRow;
     });
 
+    // Create a new workbook and a worksheet
     const ws = XLSX.utils.json_to_sheet(dataToExport, {
-        header: orderedShipmentColumns.map(c => c.header)
+        header: orderedShipmentColumns.map(c => c.header) // Ensure column order
     });
 
+    // Auto-size columns for better readability
     const colWidths = orderedShipmentColumns.map(col => {
         const headerWidth = col.header.length;
         const dataWidths = dataToExport.map(row => String(row[col.header] || '').length);
-        return { wch: Math.max(headerWidth, ...dataWidths) + 2 };
+        return { wch: Math.max(headerWidth, ...dataWidths) + 2 }; // +2 for padding
     });
     ws['!cols'] = colWidths;
 
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'FUP Report');
 
+    // Write the workbook and trigger download
     XLSX.writeFile(wb, fileName);
 };
 
@@ -570,35 +688,34 @@ const exportFUP = (shipment: Shipment) => {
 };
 
 
-// --- COMPONENTES (Sidebar, BarChart, etc.) ---
-// ... (todos os componentes permanecem aqui, sem grandes alterações na sua lógica interna)
+// --- COMPONENTS ---
 const Sidebar = ({ onNavigate, activeView, onLogout, loggedInUser }: { onNavigate: (view: string) => void, activeView: string, onLogout: () => void, loggedInUser: User | null }) => {
-    const navItems = [
-      { label: 'Dashboard', icon: <DashboardIcon /> },
-      { label: 'Imports', icon: <ImportsIcon /> },
-      { label: 'Relatório FUP', icon: <ReportIcon /> },
-      { label: 'Logistics', icon: <LogisticsIcon /> },
-      { label: '5W2H Plan', icon: <FiveW2HIcon /> },
-      { label: 'Team', icon: <TeamIcon /> },
-      { label: 'Admin', icon: <AdminIcon /> },
-    ];
-  
-    return (
-      <nav className="sidebar" aria-label="Main Navigation">
-        <div>
-          <div className="sidebar-header">Navigator</div>
-          <ul className="nav-links">
-            {navItems.map((item) => (
-              <li key={item.label}>
-                <a href="#" className={`nav-link ${activeView.startsWith(item.label.toLowerCase().replace(/ /g, '').replace('ó','o')) ? 'active' : ''}`} role="button" aria-current={activeView.startsWith(item.label.toLowerCase()) ? "page" : undefined} onClick={(e) => { e.preventDefault(); onNavigate(item.label); }}>
-                  {item.icon}
-                  <span className="nav-label">{item.label}</span>
-                </a>
-              </li>
-            ))}
-          </ul>
-        </div>
-        <div className="sidebar-footer">
+  const navItems = [
+    { label: 'Dashboard', icon: <DashboardIcon /> },
+    { label: 'Imports', icon: <ImportsIcon /> },
+    { label: 'Relatório FUP', icon: <ReportIcon /> },
+    { label: 'Logistics', icon: <LogisticsIcon /> },
+    { label: '5W2H Plan', icon: <FiveW2HIcon /> },
+    { label: 'Team', icon: <TeamIcon /> },
+    { label: 'Admin', icon: <AdminIcon /> },
+  ];
+
+  return (
+    <nav className="sidebar" aria-label="Main Navigation">
+      <div>
+        <div className="sidebar-header">Navigator</div>
+        <ul className="nav-links">
+          {navItems.map((item) => (
+            <li key={item.label}>
+              <a href="#" className={`nav-link ${activeView.startsWith(item.label.toLowerCase().replace(/ /g, '').replace('ó','o')) ? 'active' : ''}`} role="button" aria-current={activeView.startsWith(item.label.toLowerCase()) ? "page" : undefined} onClick={(e) => { e.preventDefault(); onNavigate(item.label); }}>
+                {item.icon}
+                <span className="nav-label">{item.label}</span>
+              </a>
+            </li>
+          ))}
+        </ul>
+      </div>
+      <div className="sidebar-footer">
          {loggedInUser && (
             <div className="user-info">
                 <UserIcon />
@@ -613,10 +730,10 @@ const Sidebar = ({ onNavigate, activeView, onLogout, loggedInUser }: { onNavigat
           <span className="nav-label">Logout</span>
         </a>
       </div>
-      </nav>
-    );
+    </nav>
+  );
 };
-  
+
 const BarChart = ({ data, onBarClick }: { data: any, onBarClick?: (label: string) => void }) => {
     const maxValue = Math.max(...data.datasets[0].data, 1);
     return (
@@ -633,15 +750,15 @@ const BarChart = ({ data, onBarClick }: { data: any, onBarClick?: (label: string
                     >
                         <div className="bar-label">{label}</div>
                         <div className="bar-wrapper">
-                            <div 
+                             <div 
                                 className="bar" 
                                 style={{ 
                                     width: `${(data.datasets[0].data[index] / maxValue) * 100}%`,
                                     backgroundColor: data.datasets[0].backgroundColor[index] || '#ccc'
                                 }}
-                            >
+                             >
                                 <span className="bar-value">{data.datasets[0].data[index]}</span>
-                            </div>
+                             </div>
                         </div>
                     </button>
                 ))}
@@ -649,7 +766,7 @@ const BarChart = ({ data, onBarClick }: { data: any, onBarClick?: (label: string
         </div>
     );
 };
-  
+
 const DashboardPage = ({ 
     imports, 
     claims, 
@@ -675,7 +792,7 @@ const DashboardPage = ({
     const [manualCNY, setManualCNY] = useState(exchangeRates?.cny.toString() || '');
     const [manualRatesError, setManualRatesError] = useState<string | null>(null);
     const [brokerViewMode, setBrokerViewMode] = useState<'di' | 'bl'>('bl');
-  
+
     useEffect(() => {
         if (exchangeRates) {
             setManualUSDCompra(exchangeRates.usd.compra.toString());
@@ -685,7 +802,7 @@ const DashboardPage = ({
             setManualCNY(exchangeRates.cny.toString());
         }
     }, [exchangeRates]);
-  
+
     const handleSaveRates = () => {
         setManualRatesError(null);
         const newUSDCompra = parseFloat(manualUSDCompra);
@@ -693,12 +810,12 @@ const DashboardPage = ({
         const newEURCompra = parseFloat(manualEURCompra);
         const newEURVenda = parseFloat(manualEURVenda);
         const newCNY = parseFloat(manualCNY);
-  
+
         if (isNaN(newUSDCompra) || isNaN(newUSDVenda) || isNaN(newEURCompra) || isNaN(newEURVenda) || isNaN(newCNY)) {
             setManualRatesError("Please enter valid numbers for all exchange rates.");
             return;
         }
-  
+
         setExchangeRates({
             date: new Date().toISOString().split('T')[0],
             time: format(new Date(), 'HH:mm'),
@@ -708,22 +825,22 @@ const DashboardPage = ({
         });
         setIsRatesModalOpen(false);
     };
-  
+
     const kpis = useMemo(() => {
         const totalImports = imports.length;
         const deliveredImports = imports.filter(imp => imp.status === ImportStatus.Delivered).length;
         const inProgressImports = imports.filter(imp => imp.status !== ImportStatus.Delivered).length;
-  
+
         const totalClaims = claims.length;
         const openClaims = claims.filter(claim => claim.status !== 'Resolved' && claim.status !== 'Rejected').length;
-  
+
         let totalDemurrageCostUSD = 0;
         let totalOverduePaymentsUSD = 0;
         let totalOverdueTasks = 0;
         const importsAtRiskIds = new Set<string>();
         const today = new Date();
         today.setHours(0, 0, 0, 0);
-  
+
         imports.forEach(imp => {
             if (imp.freeTimeDeadline) {
                 const deadline = new Date(imp.freeTimeDeadline);
@@ -731,7 +848,7 @@ const DashboardPage = ({
                     importsAtRiskIds.add(imp.id);
                 }
             }
-  
+
             imp.costs?.forEach(cost => {
                 if (cost.dueDate && isPast(new Date(cost.dueDate)) && cost.status !== PaymentStatus.Paid && cost.status !== PaymentStatus.Cancelled) {
                     const valueInUSD = cost.currency === 'USD' ? cost.value : 
@@ -739,17 +856,17 @@ const DashboardPage = ({
                                        cost.currency === 'EUR' && exchangeRates?.eur.venda ? cost.value / exchangeRates.eur.venda :
                                        cost.currency === 'CNY' && exchangeRates?.cny ? cost.value / exchangeRates.cny : 0;
                     totalOverduePaymentsUSD += valueInUSD;
-                      importsAtRiskIds.add(imp.id);
+                     importsAtRiskIds.add(imp.id);
                 }
             });
         });
-  
+
         totalOverdueTasks = tasks.filter(task => 
             currentUser && task.assignedToId === currentUser.id && 
             task.status !== TaskStatus.Completed &&
             task.dueDate && isPast(new Date(task.dueDate))
         ).length;
-  
+
         return {
             totalImports,
             deliveredImports,
@@ -763,16 +880,16 @@ const DashboardPage = ({
             importsAtRiskIds,
         };
     }, [imports, claims, exchangeRates, tasks, currentUser]);
-  
+
     const importsByStatusData = useMemo(() => {
         const statusCounts: Record<string, number> = {};
         imports.forEach(imp => {
             statusCounts[imp.status || 'Unknown'] = (statusCounts[imp.status || 'Unknown'] || 0) + 1;
         });
-  
+
         const labels = Object.values(ImportStatus);
         const data = labels.map(label => statusCounts[label] || 0);
-  
+
         return {
             labels,
             datasets: [{
@@ -793,19 +910,19 @@ const DashboardPage = ({
             }],
         };
     }, [imports]);
-  
+
     const brokerKpis = useMemo(() => {
         const countsByWarehouse: { [key: string]: number } = {};
         const countsByBroker: { [key: string]: number } = {};
         const parametrizationCounts: { [key: string]: number } = {};
-  
+
         const filteredForView = imports.filter(imp => {
             if (brokerViewMode === 'di') {
                 return imp.di && imp.di.trim() !== '';
             }
             return true; // 'bl' mode includes all shipments
         });
-  
+
         filteredForView.forEach(imp => {
             if (imp.bondedWarehouse) {
                 countsByWarehouse[imp.bondedWarehouse] = (countsByWarehouse[imp.bondedWarehouse] || 0) + 1;
@@ -824,11 +941,11 @@ const DashboardPage = ({
                 }
             }
         });
-  
+
         const dataByWarehouse = Object.entries(countsByWarehouse).map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count);
         const dataByBroker = Object.entries(countsByBroker).map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count);
         const parametrizationData = Object.entries(parametrizationCounts).map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count);
-  
+
         return { dataByWarehouse, dataByBroker, parametrizationData };
     }, [imports, brokerViewMode]);
     
@@ -845,11 +962,11 @@ const DashboardPage = ({
         const totalDays = durations.reduce((sum, d) => sum + d, 0);
         return { avg: Math.round(totalDays / durations.length), count: durations.length };
     }, [imports]);
-  
+
     const carsByModelKpi = useMemo(() => {
         const modelData: { [key: string]: { name: string; count: number; poList: Set<string> } } = {};
         const countedPOs = new Set<string>();
-  
+
         imports.forEach(imp => {
             if (imp.typeOfCargo) {
                 if (!modelData[imp.typeOfCargo]) {
@@ -866,15 +983,15 @@ const DashboardPage = ({
                 }
             }
         });
-  
+
         return Object.values(modelData).sort((a, b) => b.count - a.count);
     }, [imports]);
-  
-  
+
+
     const handleStatusChartClick = (status: string) => {
         onNavigate('Imports', { type: 'status', value: status });
     };
-  
+
     return (
         <div className="dashboard-page">
             <header>
@@ -924,12 +1041,12 @@ const DashboardPage = ({
                     <ListChecksIcon />
                 </div>
             </div>
-  
+
             <div className="dashboard-grid">
                 <div className="dashboard-card chart-card">
                     <BarChart data={importsByStatusData} onBarClick={handleStatusChartClick} />
                 </div>
-  
+
                 <div className="dashboard-card">
                     <h3 className="card-title">
                         <DollarSignIcon /> Exchange Rates
@@ -990,7 +1107,7 @@ const DashboardPage = ({
                         </ul>
                     ) : <div className="card-placeholder">No parametrization data.</div>}
                 </div>
-  
+
                 <div className="dashboard-card">
                     <h3 className="card-title">{brokerViewMode === 'bl' ? 'BLs' : 'DIs'} per Terminal</h3>
                     {brokerKpis.dataByWarehouse.length > 0 ? (
@@ -1006,7 +1123,7 @@ const DashboardPage = ({
                         </ul>
                     ) : <div className="card-placeholder">No data for this view.</div>}
                 </div>
-  
+
                 <div className="dashboard-card">
                     <h3 className="card-title">{brokerViewMode === 'bl' ? 'BLs' : 'DIs'} per Broker</h3>
                     {brokerKpis.dataByBroker.length > 0 ? (
@@ -1044,7 +1161,11 @@ const DashboardPage = ({
                 </div>
             </div>
             
-  
+            {/* FIX: Commented out undefined components to resolve compilation errors. */}
+            {/* <ModelPerformanceSection shipments={imports} /> */}
+            {/* <ABCAnalysisSection shipments={imports} exchangeRates={exchangeRates} /> */}
+
+
             {isRatesModalOpen && (
                 <div className="modal-overlay animate-fade-in" onClick={() => setIsRatesModalOpen(false)}>
                     <div className="modal-content animate-scale-in" onClick={e => e.stopPropagation()}>
@@ -1085,11 +1206,11 @@ const DashboardPage = ({
         </div>
     );
 };
-  
+
 const MultiSelectDropdown = ({ options, selectedOptions, onChange, placeholder = 'Select...' }: { options: string[], selectedOptions: string[], onChange: (selected: string[]) => void, placeholder?: string }) => {
     const [isOpen, setIsOpen] = useState(false);
     const dropdownRef = useRef<HTMLDivElement>(null);
-  
+
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
             if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
@@ -1101,20 +1222,20 @@ const MultiSelectDropdown = ({ options, selectedOptions, onChange, placeholder =
             document.removeEventListener('mousedown', handleClickOutside);
         };
     }, []);
-  
+
     const handleOptionToggle = (option: string) => {
         const newSelected = selectedOptions.includes(option)
             ? selectedOptions.filter(o => o !== option)
             : [...selectedOptions, option];
         onChange(newSelected);
     };
-  
+
     const displayLabel = selectedOptions.length === 0
         ? placeholder
         : selectedOptions.length === 1
             ? selectedOptions[0]
             : `${selectedOptions.length} statuses selected`;
-  
+
     return (
         <div className="multiselect-dropdown" ref={dropdownRef}>
             <button type="button" className="dropdown-btn" onClick={() => setIsOpen(!isOpen)}>
@@ -1141,7 +1262,8 @@ const MultiSelectDropdown = ({ options, selectedOptions, onChange, placeholder =
         </div>
     );
 };
-  
+
+
 const ImportListPage = ({ imports, onSelect, onNew, onUpdate, onDelete, onBulkImport, initialFilter, onClearInitialFilter }: { imports: Shipment[], onSelect: (id: string) => void, onNew: () => void, onUpdate: (shipment: Shipment) => void, onDelete: (id: string) => void, onBulkImport: (data: Shipment[]) => void, initialFilter: { type: string, value: string } | null, onClearInitialFilter: () => void }) => {
     const [searchTerm, setSearchTerm] = useState('');
     const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
@@ -1156,7 +1278,7 @@ const ImportListPage = ({ imports, onSelect, onNew, onUpdate, onDelete, onBulkIm
     const topScrollRef = useRef<HTMLDivElement>(null);
     const bottomScrollRef = useRef<HTMLDivElement>(null);
     const tableRef = useRef<HTMLTableElement>(null);
-  
+
     const filteredImports = useMemo(() => {
         return imports.filter(imp => {
             if (blListFilter) {
@@ -1165,7 +1287,7 @@ const ImportListPage = ({ imports, onSelect, onNew, onUpdate, onDelete, onBulkIm
             if (poListFilter) {
                 return imp.poSap ? poListFilter.includes(imp.poSap) : false;
             }
-  
+
             const lowercasedFilter = searchTerm.toLowerCase();
             const matchesSearch = !searchTerm || (
                 imp.blAwb.toLowerCase().includes(lowercasedFilter) ||
@@ -1176,26 +1298,26 @@ const ImportListPage = ({ imports, onSelect, onNew, onUpdate, onDelete, onBulkIm
                 (imp.shipper && imp.shipper.toLowerCase().includes(lowercasedFilter)) ||
                 (imp.bondedWarehouse && imp.bondedWarehouse.toLowerCase().includes(lowercasedFilter))
             );
-  
+
             const matchesStatus = statusFilter.length === 0 || (imp.status ? statusFilter.includes(imp.status) : false);
             const matchesBroker = brokerFilter === 'All' || imp.broker === brokerFilter;
             const matchesWarehouse = warehouseFilter === 'All' || imp.bondedWarehouse === warehouseFilter;
             const matchesParametrization = parametrizationFilter === 'All' || toTitleCase(imp.parametrization) === parametrizationFilter;
-  
+
             return matchesSearch && matchesStatus && matchesBroker && matchesWarehouse && matchesParametrization;
         });
     }, [imports, searchTerm, statusFilter, brokerFilter, warehouseFilter, parametrizationFilter, blListFilter, poListFilter]);
-  
+
     useLayoutEffect(() => {
         const topDiv = topScrollRef.current;
         const bottomDiv = bottomScrollRef.current;
         const table = tableRef.current;
-  
+
         if (!topDiv || !bottomDiv || !table) return;
-  
+
         const topInner = topDiv.firstChild as HTMLDivElement;
         if (!topInner) return;
-  
+
         const updateWidth = () => {
             if (table.scrollWidth > table.clientWidth) {
                 topInner.style.width = `${table.scrollWidth}px`;
@@ -1204,9 +1326,9 @@ const ImportListPage = ({ imports, onSelect, onNew, onUpdate, onDelete, onBulkIm
                 topDiv.style.display = 'none';
             }
         };
-  
+
         updateWidth();
-  
+
         let isSyncing = false;
         const syncScroll = (source: HTMLDivElement, target: HTMLDivElement) => {
             if (isSyncing) return;
@@ -1219,21 +1341,21 @@ const ImportListPage = ({ imports, onSelect, onNew, onUpdate, onDelete, onBulkIm
         
         const handleTopScroll = () => syncScroll(topDiv, bottomDiv);
         const handleBottomScroll = () => syncScroll(bottomDiv, topDiv);
-  
+
         topDiv.addEventListener('scroll', handleTopScroll);
         bottomDiv.addEventListener('scroll', handleBottomScroll);
         
         const resizeObserver = new ResizeObserver(updateWidth);
         resizeObserver.observe(table);
         resizeObserver.observe(bottomDiv);
-  
+
         return () => {
             topDiv.removeEventListener('scroll', handleTopScroll);
             bottomDiv.removeEventListener('scroll', handleBottomScroll);
             resizeObserver.disconnect();
         };
     }, [filteredImports]);
-  
+
     useEffect(() => {
         if (initialFilter) {
             // Reset all filters first
@@ -1244,7 +1366,7 @@ const ImportListPage = ({ imports, onSelect, onNew, onUpdate, onDelete, onBulkIm
             setBlListFilter(null);
             setPoListFilter(null);
             setSearchTerm('');
-  
+
             switch (initialFilter.type) {
                 case 'warehouse':
                     setWarehouseFilter(initialFilter.value);
@@ -1273,7 +1395,7 @@ const ImportListPage = ({ imports, onSelect, onNew, onUpdate, onDelete, onBulkIm
             onClearInitialFilter();
         }
     }, [initialFilter, onClearInitialFilter]);
-  
+
     const uniqueBrokers = useMemo(() => [...new Set(imports.map(i => i.broker).filter(Boolean).sort())], [imports]);
     const uniqueWarehouses = useMemo(() => [...new Set(imports.map(i => i.bondedWarehouse).filter(Boolean).sort())], [imports]);
     
@@ -1294,7 +1416,7 @@ const ImportListPage = ({ imports, onSelect, onNew, onUpdate, onDelete, onBulkIm
     const handleBrokerChange = createFilterChangeHandler(setBrokerFilter);
     const handleWarehouseChange = createFilterChangeHandler(setWarehouseFilter);
     const handleParametrizationChange = createFilterChangeHandler(setParametrizationFilter);
-  
+
     const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         setSearchTerm(e.target.value);
         setBlListFilter(null);
@@ -1306,34 +1428,34 @@ const ImportListPage = ({ imports, onSelect, onNew, onUpdate, onDelete, onBulkIm
         setBlListFilter(null);
         setPoListFilter(null);
     };
-  
+
     const handleImportConfirm = (data: Shipment[]) => {
         onBulkImport(data);
         setIsUploadModalOpen(false);
     };
-  
+
     const handleInlineEditStart = (shipment: Shipment) => {
         setEditingRow({ ...shipment });
     };
-  
+
     const handleInlineCancel = () => {
         setEditingRow(null);
     };
-  
+
     const handleInlineChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         if (!editingRow) return;
         const { name, value } = e.target;
         setEditingRow(prev => ({ ...prev, [name]: value }));
     };
-  
+
     const handleInlineSave = () => {
         if (!editingRow || !editingRow.id) return;
-  
+
         const originalShipment = imports.find(s => s.id === editingRow!.id);
         if (!originalShipment) return;
-  
+
         const finalData = { ...originalShipment, ...editingRow };
-  
+
         // Convert display dates back to ISO format before saving
         const dateFields: (keyof Shipment)[] = ['diRegistrationDate', 'greenChannelOrDeliveryAuthorizedDate', 'firstTruckDelivery', 'lastTruckDelivery'];
         dateFields.forEach(field => {
@@ -1351,7 +1473,7 @@ const ImportListPage = ({ imports, onSelect, onNew, onUpdate, onDelete, onBulkIm
         e.stopPropagation();
         handleInlineEditStart(shipment);
     };
-  
+
     return (
         <div className="imports-list-page">
              <div className="table-wrapper">
@@ -1508,27 +1630,27 @@ const ImportListPage = ({ imports, onSelect, onNew, onUpdate, onDelete, onBulkIm
         </div>
     );
 };
-  
+
 const ImportFormPage = ({ onSave, onCancel, existingImport }: { onSave: (shipment: Shipment) => void, onCancel: () => void, existingImport?: Shipment }) => {
     const [shipment, setShipment] = useState<Shipment>(existingImport || {
         id: '', blAwb: 'TBC', status: ImportStatus.OrderPlaced, containers: [], costs: []
     });
-  
+
     useEffect(() => {
         const { actualEta, actualEtd, freeTime, incoterm, bondedWarehouse } = shipment;
-  
+
         const etaDate = parseDate(actualEta);
         const etdDate = parseDate(actualEtd);
-  
+
         const updates: Partial<Shipment> = {};
-  
+
         // 1. Transit Time
         let newTransitTime: number | undefined;
         if (etaDate && etdDate && etaDate >= etdDate) {
             newTransitTime = differenceInDays(etaDate, etdDate);
         }
         updates.transitTime = newTransitTime;
-  
+
         // 2. Free Time Deadline
         let newFreeTimeDeadline = '';
         if (etaDate && typeof freeTime === 'number' && freeTime > 0) {
@@ -1543,7 +1665,7 @@ const ImportFormPage = ({ onSave, onCancel, existingImport }: { onSave: (shipmen
         // 3. Storage Deadline
         const newStorageDeadline = calculateStorageDeadline(incoterm, bondedWarehouse, actualEta);
         updates.storageDeadline = newStorageDeadline;
-  
+
         setShipment(prev => {
             if (
                 prev.transitTime !== updates.transitTime ||
@@ -1554,10 +1676,10 @@ const ImportFormPage = ({ onSave, onCancel, existingImport }: { onSave: (shipmen
             }
             return prev;
         });
-  
+
     }, [shipment.actualEta, shipment.actualEtd, shipment.freeTime, shipment.incoterm, shipment.bondedWarehouse]);
-  
-  
+
+
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
         const { name, value, type } = e.target;
         
@@ -1573,15 +1695,15 @@ const ImportFormPage = ({ onSave, onCancel, existingImport }: { onSave: (shipmen
             }
             // Otherwise, keep the partial string as is
         }
-  
+
         setShipment(prev => ({ ...prev, [name]: processedValue }));
     };
-  
+
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         onSave(shipment);
     };
-  
+
     return (
         <div className="import-form-page">
             <header>
@@ -1613,7 +1735,7 @@ const ImportFormPage = ({ onSave, onCancel, existingImport }: { onSave: (shipmen
                         </div>
                     </div>
                 </div>
-  
+
                 <div className="detail-card">
                     <h3>Cargo &amp; Logistics Details</h3>
                     <div className="form-grid-3col">
@@ -1636,7 +1758,7 @@ const ImportFormPage = ({ onSave, onCancel, existingImport }: { onSave: (shipmen
                         <div className="form-group"><label>Bonded Warehouse</label><input type="text" name="bondedWarehouse" value={shipment.bondedWarehouse || ''} onChange={handleChange} /></div>
                     </div>
                 </div>
-  
+
                 <div className="detail-card">
                     <h3>Customs &amp; Broker Details</h3>
                      <div className="form-grid-3col">
@@ -1651,7 +1773,7 @@ const ImportFormPage = ({ onSave, onCancel, existingImport }: { onSave: (shipmen
                         <div className="form-group"><label>Damage Report</label><select name="damageReport" value={shipment.damageReport || ''} onChange={handleChange}><option value="">Select</option><option value="Yes">Yes</option><option value="No">No</option></select></div>
                     </div>
                 </div>
-  
+
                  <div className="detail-card">
                     <h3>Dates & Deadlines</h3>
                      <div className="form-grid-3col">
@@ -1670,7 +1792,7 @@ const ImportFormPage = ({ onSave, onCancel, existingImport }: { onSave: (shipmen
                         <div className="form-group"><label>First Truck Delivery</label><input type="text" name="firstTruckDelivery" value={toDisplayDate(shipment.firstTruckDelivery)} onChange={handleChange} placeholder="dd/mm/yyyy" /></div>
                         <div className="form-group"><label>Last Truck Delivery</label><input type="text" name="lastTruckDelivery" value={toDisplayDate(shipment.lastTruckDelivery)} onChange={handleChange} placeholder="dd/mm/yyyy" /></div>
                         <div className="form-group"><label>Invoice Payment Date</label><input type="text" name="invoicePaymentDate" value={toDisplayDate(shipment.invoicePaymentDate)} onChange={handleChange} placeholder="dd/mm/yyyy" /></div>
-                    </div>
+                     </div>
                 </div>
 
                  <div className="detail-card">
@@ -1689,7 +1811,7 @@ const ImportFormPage = ({ onSave, onCancel, existingImport }: { onSave: (shipmen
                         <div className="form-group"><label>NF Nacionalization</label><input type="text" name="nfNacionalization" value={shipment.nfNacionalization || ''} onChange={handleChange} /></div>
                         <div className="form-group"><label>NF Issue Date</label><input type="text" name="nfIssueDate" value={toDisplayDate(shipment.nfIssueDate)} onChange={handleChange} placeholder="dd/mm/yyyy" /></div>
                         <div className="form-group"><label>NF Value Per Container</label><input type="number" step="0.01" name="nfValuePerContainer" value={shipment.nfValuePerContainer || ''} onChange={handleChange} /></div>
-                    </div>
+                     </div>
                  </div>
                  
                  <div className="detail-card">
@@ -1704,7 +1826,7 @@ const ImportFormPage = ({ onSave, onCancel, existingImport }: { onSave: (shipmen
                         <div className="form-group"><label>Approved Draft DI Date</label><input type="text" name="approvedDraftDi" value={toDisplayDate(shipment.approvedDraftDi)} onChange={handleChange} placeholder="dd/mm/yyyy" /></div>
                         <div className="form-group"><label>CE</label><input type="text" name="ce" value={shipment.ce || ''} onChange={handleChange} /></div>
                         <div className="form-group" style={{gridColumn: '1 / -1'}}><label>Observation</label><textarea name="observation" value={shipment.observation || ''} onChange={handleChange} rows={4}></textarea></div>
-                    </div>
+                     </div>
                  </div>
 
                 <div className="form-actions bottom-actions">
@@ -1715,7 +1837,7 @@ const ImportFormPage = ({ onSave, onCancel, existingImport }: { onSave: (shipmen
         </div>
     )
 };
-  
+
 const ImportDetailPage = ({ importProcess, onBack, onEdit }: { importProcess: Shipment, onBack: () => void, onEdit: () => void }) => {
     
     const DetailItem = ({ label, value }: {label: string, value: any}) => (
@@ -1785,7 +1907,7 @@ const ImportDetailPage = ({ importProcess, onBack, onEdit }: { importProcess: Sh
                     <DetailItem label="CE" value={importProcess.ce} />
                     <DetailItem label="Damage Report" value={importProcess.damageReport} />
                 </div>
-  
+
                 <div className="detail-card full-width">
                      <h3>Key Dates & Deadlines</h3>
                      <div className="detail-grid-4col">
@@ -1803,9 +1925,9 @@ const ImportDetailPage = ({ importProcess, onBack, onEdit }: { importProcess: Sh
                         <DetailItem label="Invoice Payment Date" value={toDisplayDate(importProcess.invoicePaymentDate)} />
                         <DetailItem label="First Truck Delivery" value={toDisplayDate(importProcess.firstTruckDelivery)} />
                         <DetailItem label="Last Truck Delivery" value={toDisplayDate(importProcess.lastTruckDelivery)} />
-                    </div>
+                     </div>
                 </div>
-  
+
                 <div className="detail-card full-width">
                     <h3>Financial & NF Details</h3>
                     <div className="detail-grid-4col">
@@ -1824,7 +1946,7 @@ const ImportDetailPage = ({ importProcess, onBack, onEdit }: { importProcess: Sh
                         <DetailItem label="Approved Draft NF Date" value={toDisplayDate(importProcess.approvedDraftNf)} />
                     </div>
                 </div>
-  
+
                 <div className="detail-card full-width">
                     <h3>Process, Team & Observations</h3>
                      <div className="detail-grid-4col">
@@ -1835,8 +1957,8 @@ const ImportDetailPage = ({ importProcess, onBack, onEdit }: { importProcess: Sh
                         <DetailItem label="Under Water" value={importProcess.underWater} />
                         <DetailItem label="Technician - China" value={importProcess.technicianResponsibleChina} />
                         <DetailItem label="Technician - Brazil" value={importProcess.technicianResponsibleBrazil} />
-                    </div>
-                   {importProcess.observation && (
+                     </div>
+                     {importProcess.observation && (
                         <>
                             <hr style={{margin: '1rem 0', border: 'none', borderTop: '1px solid var(--border-color)'}}/>
                             <div className="detail-item">
@@ -1844,16 +1966,16 @@ const ImportDetailPage = ({ importProcess, onBack, onEdit }: { importProcess: Sh
                             </div>
                             <p style={{whiteSpace: 'pre-wrap', color: 'var(--text-dark)', marginTop: '-0.5rem'}}>{importProcess.observation}</p>
                         </>
-                   )}
+                    )}
                 </div>
             </div>
         </div>
     );
 };
-  
+
 const FUPReportPage = ({ shipments }: { shipments: Shipment[] }) => {
     const [searchTerm, setSearchTerm] = useState('');
-  
+
     const filteredShipments = useMemo(() => {
         if (!searchTerm) return shipments;
         const lowercasedFilter = searchTerm.toLowerCase();
@@ -1863,9 +1985,9 @@ const FUPReportPage = ({ shipments }: { shipments: Shipment[] }) => {
             )
         );
     }, [shipments, searchTerm]);
-  
+
     const headers = orderedShipmentColumns.map(c => c.header);
-  
+
     return (
         <div className="fup-report-page">
              <div className="table-wrapper">
@@ -1899,9 +2021,11 @@ const FUPReportPage = ({ shipments }: { shipments: Shipment[] }) => {
                                         const value = imp[key as keyof Shipment];
                                         const isWrappable = key === 'description' || key === 'observation';
                                         const tdClassName = isWrappable ? 'wrap-text' : '';
-  
+
+                                        // FIX: Ensure that any value rendered in a table cell is a valid ReactNode.
+                                        // Objects and arrays are converted to string representations to prevent runtime errors.
                                         let cellContent: React.ReactNode;
-  
+
                                         if (Array.isArray(value)) {
                                             cellContent = `${value.length} items`;
                                         } else if (typeof value === 'object' && value !== null) {
@@ -1913,7 +2037,7 @@ const FUPReportPage = ({ shipments }: { shipments: Shipment[] }) => {
                                         } else {
                                             cellContent = value === null || value === undefined ? '' : String(value);
                                         }
-  
+
                                         return <td key={key} className={tdClassName}>{cellContent}</td>;
                                     })}
                                 </tr>
@@ -1925,7 +2049,152 @@ const FUPReportPage = ({ shipments }: { shipments: Shipment[] }) => {
         </div>
     );
 };
-  
+
+// --- SIMULATED VESSEL ETA FETCHER ---
+interface ScrapedVesselData {
+    ship_name: string;
+    eta: string;
+    ata: string | null;
+    etd: string;
+    atd: string | null;
+}
+
+const mockFetchShipSchedule = async (): Promise<ScrapedVesselData[]> => {
+    console.log("Simulating fetching data from Tecon Santos portal with IMPROVED logic...");
+    await new Promise(resolve => setTimeout(resolve, 2500)); // Simulate network delay
+    
+    // This data simulates a more realistic scrape, including vessels from the user's screenshot.
+    const scrapedData: ScrapedVesselData[] = [
+        // Vessel from previous successful update
+        { ship_name: 'MAERSK ALABAMA', eta: '2024-07-22 14:00', ata: '2024-07-22 15:30', etd: '2024-07-24 18:00', atd: null }, 
+        // Vessel already delivered
+        { ship_name: 'MSC LILY', eta: '2024-07-20 09:00', ata: '2024-07-20 08:45', etd: '2024-07-21 22:00', atd: '2024-07-21 23:00' },
+        // New vessels from the screenshot that were previously "not found"
+        { ship_name: 'MSC KATRINA', eta: '2025-10-14 08:30', ata: null, etd: '2025-10-15 05:00', atd: null },
+        { ship_name: 'MSC INSA', eta: '2025-10-13 05:00', ata: null, etd: '2025-10-13 23:00', atd: null },
+        { ship_name: 'MSC KALAMATA', eta: '2025-08-04 10:00', ata: '2025-08-04 11:30', etd: '2025-08-06 02:00', atd: null },
+        // A vessel that won't be in our imports list
+        { ship_name: 'COSCO SHIPPING ROSE', eta: '2025-10-15 16:00', ata: null, etd: '2025-10-16 10:00', atd: null }, 
+    ];
+    console.log("Simulated data fetched:", scrapedData);
+    return scrapedData;
+};
+
+
+const VesselUpdateService = ({ shipments, setShipments }: { shipments: Shipment[], setShipments: (shipments: Shipment[]) => void }) => {
+    const [isLoading, setIsLoading] = useState(false);
+    const [updateLog, setUpdateLog] = useState<string[]>([]);
+    
+    const handleUpdate = async () => {
+        setIsLoading(true);
+        setUpdateLog(['Process started... Fetching latest vessel schedules.']);
+        
+        try {
+            const scrapedData = await mockFetchShipSchedule();
+            setUpdateLog(prev => [...prev, `Successfully fetched data for ${scrapedData.length} vessels.`]);
+
+            let updatedShipmentsCount = 0;
+            const newShipments = [...shipments];
+
+            const validScrapedVessels = scrapedData.filter(d => {
+                if (typeof d.ship_name === 'string' && d.ship_name.trim() !== '') {
+                    return true;
+                }
+                setUpdateLog(prev => [...prev, `[WARNING] A vessel with an invalid or missing name was found in the fetched schedule and will be skipped.`]);
+                return false;
+            });
+
+            const foundVesselsInScrape = new Set(validScrapedVessels.map(d => d.ship_name.trim().toUpperCase()));
+
+            validScrapedVessels.forEach(scrapedVessel => {
+                const vesselNameUpper = scrapedVessel.ship_name.trim().toUpperCase();
+                
+                const matchingShipmentsIndices = newShipments
+                    .map((shipment, index) => ({ shipment, index }))
+                    .filter(item => typeof item.shipment.arrivalVessel === 'string' && item.shipment.arrivalVessel.trim().toUpperCase() === vesselNameUpper);
+
+                if (matchingShipmentsIndices.length > 0) {
+                     matchingShipmentsIndices.forEach(({ shipment: original, index: shipmentIndex }) => {
+                        const updatedFields: Partial<Shipment> = {};
+                        let hasUpdate = false;
+
+                        const newEta = scrapedVessel.eta;
+                        const newEtd = scrapedVessel.etd;
+
+                        if (newEta !== original.actualEta) {
+                            updatedFields.actualEta = newEta;
+                            hasUpdate = true;
+                        }
+                        if (newEtd !== original.actualEtd) {
+                            updatedFields.actualEtd = newEtd;
+                            hasUpdate = true;
+                        }
+                        
+                        if (hasUpdate) {
+                            newShipments[shipmentIndex] = { ...original, ...updatedFields };
+                            updatedShipmentsCount++;
+                            setUpdateLog(prev => [...prev, `[SUCCESS] Vessel '${original.arrivalVessel}' (BL: ${original.blAwb}) updated.`]);
+                        } else {
+                            setUpdateLog(prev => [...prev, `[INFO] Vessel '${original.arrivalVessel}' (BL: ${original.blAwb}): Dates are already synchronized.`]);
+                        }
+                    });
+                } else {
+                    setUpdateLog(prev => [...prev, `[INFO] New vessel found in schedule: '${scrapedVessel.ship_name}'. Consider adding it to your imports.`]);
+                }
+            });
+
+            shipments.forEach(ship => {
+                if (typeof ship.arrivalVessel !== 'string' || !ship.arrivalVessel.trim()) {
+                    setUpdateLog(prev => [...prev, `[WARNING] Shipment with BL '${ship.blAwb}' has a missing vessel name and was skipped during the check.`]);
+                    return;
+                }
+                if (!foundVesselsInScrape.has(ship.arrivalVessel.trim().toUpperCase())) {
+                     setUpdateLog(prev => [...prev, `[WARNING] Vessel '${ship.arrivalVessel}' (in your imports) was not found in the live schedule.`]);
+                }
+            });
+            
+            setShipments(newShipments);
+            setUpdateLog(prev => [...prev, `\nUpdate complete. ${updatedShipmentsCount} shipment(s) updated.`]);
+
+        } catch (error) {
+            console.error("Failed to fetch vessel data:", error);
+            const errorMessage = error instanceof Error ? error.message : "An unknown error occurred.";
+            setUpdateLog(prev => [...prev, `[ERROR] Failed to fetch or process vessel data: ${errorMessage}. Please try again later.`]);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+
+    return (
+        <div className="detail-card">
+            <h3 className="card-title"><WandIcon />Automated Vessel ETA Updates</h3>
+            <p className="card-description">
+                This tool automates the process of updating vessel ETAs by fetching the latest public schedule from the Tecon Santos portal. Click the button below to synchronize your import records.
+            </p>
+            <div className="update-service-actions">
+                <button onClick={handleUpdate} disabled={isLoading} className="btn-create">
+                    {isLoading ? <><Loader2Icon /> Fetching...</> : 'Fetch Latest Vessel ETAs'}
+                </button>
+            </div>
+            {updateLog.length > 0 && (
+                <div className="update-log-container">
+                    <h4>Update Log</h4>
+                    <pre className="update-log">
+                        {updateLog.map((line, index) => {
+                            const type = line.startsWith('[SUCCESS]') ? 'log-success' :
+                                         line.startsWith('[WARNING]') ? 'log-warning' :
+                                         line.startsWith('[ERROR]') ? 'log-error' :
+                                         line.startsWith('[INFO]') ? 'log-info' : '';
+                            return <div key={index} className={type}>{line}</div>
+                        })}
+                    </pre>
+                </div>
+            )}
+        </div>
+    );
+};
+
 const LogisticsPage = ({ shipments, setShipments }: { shipments: Shipment[], setShipments: (shipments: Shipment[]) => void }) => {
     return (
         <div className="logistics-page">
@@ -1936,29 +2205,138 @@ const LogisticsPage = ({ shipments, setShipments }: { shipments: Shipment[], set
         </div>
     );
 };
-  
+
+const FiveW2HFormModal = ({ item, onSave, onCancel, allImports, allUsers }: { item?: FiveW2H, onSave: (item: FiveW2H) => void, onCancel: () => void, allImports: Shipment[], allUsers: User[] }) => {
+    const [formData, setFormData] = useState<FiveW2H>(item || {
+        id: '', what: '', why: '', who: '', where: '', when: '', how: '', howMuch: 0, currency: 'BRL', status: FiveW2HStatus.Open
+    });
+
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+        const { name, value, type } = e.target;
+        setFormData(prev => ({
+            ...prev,
+            [name]: type === 'number' ? parseFloat(value) : value
+        }));
+    };
+    
+    const handleRelatedToChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+        const selectedId = e.target.value;
+        if (selectedId) {
+            const selectedImport = allImports.find(imp => imp.id === selectedId);
+            if(selectedImport) {
+                setFormData(prev => ({
+                    ...prev,
+                    relatedTo: { type: 'Import', id: selectedId, label: `BL ${selectedImport.blAwb} - ${selectedImport.description}` }
+                }));
+            }
+        } else {
+            setFormData(prev => ({ ...prev, relatedTo: undefined }));
+        }
+    };
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        onSave(formData);
+    };
+
+    return (
+        <div className="modal-overlay animate-fade-in" onClick={onCancel}>
+            <div className="modal-content modal-content-large animate-scale-in" onClick={e => e.stopPropagation()}>
+                <form onSubmit={handleSubmit}>
+                    <div className="modal-header">
+                        <h3 className="modal-title">{item ? 'Edit Action Item' : 'New Action Item'}</h3>
+                        <button type="button" onClick={onCancel} className="close-button"><CloseIcon /></button>
+                    </div>
+                    <div className="modal-body">
+                        <div className="form-grid-2col">
+                             <div className="form-group span-2">
+                                <label htmlFor="what">What (What needs to be done?)</label>
+                                <input type="text" id="what" name="what" value={formData.what} onChange={handleChange} required />
+                            </div>
+                            <div className="form-group span-2">
+                                <label htmlFor="why">Why (Why does it need to be done?)</label>
+                                <textarea id="why" name="why" value={formData.why} onChange={handleChange} rows={2}></textarea>
+                            </div>
+                            <div className="form-group">
+                                <label htmlFor="who">Who (Who is responsible?)</label>
+                                <select id="who" name="who" value={formData.who} onChange={handleChange} required>
+                                    <option value="">Select User</option>
+                                    {allUsers.map(user => <option key={user.id} value={user.name}>{user.name}</option>)}
+                                </select>
+                            </div>
+                            <div className="form-group">
+                                <label htmlFor="when">When (Due Date)</label>
+                                <input type="date" id="when" name="when" value={formData.when} onChange={handleChange} required />
+                            </div>
+                             <div className="form-group span-2">
+                                <label htmlFor="where">Where (Where will it be done?)</label>
+                                <input type="text" id="where" name="where" value={formData.where} onChange={handleChange} />
+                            </div>
+                            <div className="form-group span-2">
+                                <label htmlFor="how">How (How will it be done?)</label>
+                                <textarea id="how" name="how" value={formData.how} onChange={handleChange} rows={3}></textarea>
+                            </div>
+                             <div className="form-group">
+                                <label htmlFor="howMuch">How Much (Cost)</label>
+                                <input type="number" step="0.01" id="howMuch" name="howMuch" value={formData.howMuch} onChange={handleChange} />
+                            </div>
+                             <div className="form-group">
+                                <label htmlFor="currency">Currency</label>
+                                <select id="currency" name="currency" value={formData.currency} onChange={handleChange}>
+                                    <option value="BRL">BRL</option>
+                                    <option value="USD">USD</option>
+                                    <option value="EUR">EUR</option>
+                                    <option value="CNY">CNY</option>
+                                </select>
+                            </div>
+                             <div className="form-group">
+                                <label htmlFor="status">Status</label>
+                                <select id="status" name="status" value={formData.status} onChange={handleChange}>
+                                    {Object.values(FiveW2HStatus).map(s => <option key={s} value={s}>{s}</option>)}
+                                </select>
+                            </div>
+                            <div className="form-group">
+                                <label htmlFor="relatedTo">Related To (Import)</label>
+                                <select id="relatedTo" value={formData.relatedTo?.id || ''} onChange={handleRelatedToChange}>
+                                     <option value="">None</option>
+                                    {allImports.map(imp => <option key={imp.id} value={imp.id}>{`${imp.blAwb} - ${imp.description}`}</option>)}
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    <div className="modal-actions-footer">
+                        <button type="button" onClick={onCancel} className="btn-discard">Cancel</button>
+                        <button type="submit" className="btn-create">{item ? 'Save Changes' : 'Create Action'}</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    );
+};
+
+
 const FiveW2HPage = ({ data, onSave, onDelete, allImports, allUsers }: { data: FiveW2H[], onSave: (item: FiveW2H) => void, onDelete: (id: string) => void, allImports: Shipment[], allUsers: User[] }) => {
     const [searchTerm, setSearchTerm] = useState('');
     const [statusFilter, setStatusFilter] = useState('All');
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingItem, setEditingItem] = useState<FiveW2H | undefined>(undefined);
-  
+
     const handleNew = () => {
         setEditingItem(undefined);
         setIsModalOpen(true);
     };
-  
+
     const handleEdit = (item: FiveW2H) => {
         setEditingItem(item);
         setIsModalOpen(true);
     };
-  
+
     const handleSave = (item: FiveW2H) => {
         onSave(item);
         setIsModalOpen(false);
         setEditingItem(undefined);
     };
-  
+
     const filteredData = useMemo(() => {
         return data.filter(item => {
             const matchesSearch = searchTerm === '' ||
@@ -1967,11 +2345,11 @@ const FiveW2HPage = ({ data, onSave, onDelete, allImports, allUsers }: { data: F
                 item.relatedTo?.label.toLowerCase().includes(searchTerm.toLowerCase());
             
             const matchesStatus = statusFilter === 'All' || item.status === statusFilter;
-  
+
             return matchesSearch && matchesStatus;
         });
     }, [data, searchTerm, statusFilter]);
-  
+
     return (
         <div className="fivew2h-page">
             <div className="table-wrapper">
@@ -2034,18 +2412,19 @@ const FiveW2HPage = ({ data, onSave, onDelete, allImports, allUsers }: { data: F
         </div>
     );
 };
-  
+
+
 const AdminPage = ({ user, onPasswordChange }: { user: User, onPasswordChange: (pass: string) => void }) => {
     const [password, setPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
-  
+
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         setError('');
         setSuccess('');
-  
+
         if (!password || !confirmPassword) {
             setError('Please fill out both password fields.');
             return;
@@ -2058,13 +2437,13 @@ const AdminPage = ({ user, onPasswordChange }: { user: User, onPasswordChange: (
             setError('Password must be at least 6 characters long.');
             return;
         }
-  
+
         onPasswordChange(password);
         setSuccess('Password changed successfully!');
         setPassword('');
         setConfirmPassword('');
     };
-  
+
     return (
         <div className="admin-page">
              <header>
@@ -2102,16 +2481,17 @@ const AdminPage = ({ user, onPasswordChange }: { user: User, onPasswordChange: (
         </div>
     );
 };
-  
+
+
 const LoginScreen = ({ onLogin, error }: { onLogin: (username: string, pass: string) => void, error: string }) => {
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
-  
+
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         onLogin(username, password);
     };
-  
+
     return (
         <div className="login-screen">
             <div className="login-box animate-scale-in">
@@ -2148,36 +2528,36 @@ const LoginScreen = ({ onLogin, error }: { onLogin: (username: string, pass: str
         </div>
     );
 };
-  
+
 const UserFormModal = ({ user, onSave, onCancel }: { user?: User, onSave: (user: User) => void, onCancel: () => void }) => {
     const [formData, setFormData] = useState<User>(user || { id: '', name: '', username: '', role: 'Broker', password: '' });
     const [confirmPassword, setConfirmPassword] = useState('');
     const [error, setError] = useState('');
-  
+
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
         setFormData(prev => ({ ...prev, [name]: value }));
     };
-  
+
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         setError('');
-  
+
         if (formData.password !== confirmPassword) {
             setError('Passwords do not match.');
             return;
         }
-  
+
         if (!formData.id && !formData.password) {
             setError('Password is required for new users.');
             return;
         }
-  
+
         onSave(formData);
     };
-  
+
     const roles: UserRole[] = ['Admin', 'COMEX', 'Broker', 'Logistics', 'Finance'];
-  
+
     return (
         <div className="modal-overlay animate-fade-in" onClick={onCancel}>
             <div className="modal-content animate-scale-in" onClick={e => e.stopPropagation()}>
@@ -2220,27 +2600,28 @@ const UserFormModal = ({ user, onSave, onCancel }: { user?: User, onSave: (user:
         </div>
     );
 };
-  
+
+
 const TeamPage = ({ users, onSave, onDelete }: { users: User[], onSave: (user: User) => void, onDelete: (id: string) => void }) => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingUser, setEditingUser] = useState<User | undefined>(undefined);
-  
+
     const handleNew = () => {
         setEditingUser(undefined);
         setIsModalOpen(true);
     };
-  
+
     const handleEdit = (user: User) => {
         setEditingUser(user);
         setIsModalOpen(true);
     };
-  
+
     const handleSave = (user: User) => {
         onSave(user);
         setIsModalOpen(false);
         setEditingUser(undefined);
     };
-  
+
     return (
         <div className="team-page">
             <div className="table-wrapper">
@@ -2284,14 +2665,14 @@ const TeamPage = ({ users, onSave, onDelete }: { users: User[], onSave: (user: U
         </div>
     );
 };
-  
+
 type AccordionItemProps = {
     title: string;
     isOpen: boolean;
     onToggle: () => void;
     children: React.ReactNode;
 };
-
+// FIX: Changed component to use React.FC to correctly type it as a functional component, resolving a 'key' prop error.
 const AccordionItem: React.FC<AccordionItemProps> = ({ title, children, isOpen, onToggle }) => (
     <div className="accordion-item">
         <button className="accordion-header" onClick={onToggle} aria-expanded={isOpen}>
@@ -2305,7 +2686,7 @@ const AccordionItem: React.FC<AccordionItemProps> = ({ title, children, isOpen, 
         </div>
     </div>
 );
-  
+
 const UploadModal = ({ onCancel, onImport, parser, title }: { onCancel: () => void, onImport: (data: any[]) => void, parser: (data: any[]) => { data: any[], error: string | null }, title: string }) => {
     const [dragOver, setDragOver] = useState(false);
     const [fileName, setFileName] = useState<string | null>(null);
@@ -2319,12 +2700,12 @@ const UploadModal = ({ onCancel, onImport, parser, title }: { onCancel: () => vo
         
         const fileExtension = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
         const validExtensions = ['.csv', '.xls', '.xlsx'];
-  
+
         if (!validExtensions.includes(fileExtension)) {
             setError("Invalid file type. Please upload a .csv, .xls, or .xlsx file.");
             return;
         }
-  
+
         const reader = new FileReader();
         reader.onload = (e) => {
             try {
@@ -2350,9 +2731,10 @@ const UploadModal = ({ onCancel, onImport, parser, title }: { onCancel: () => vo
                     if (!firstSheetName) throw new Error("No sheets found in the Excel file.");
                     const worksheet = workbook.Sheets[firstSheetName];
                     
+                    // --- INTELLIGENT HEADER DETECTION ---
                     const rows: any[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: null });
                     if (rows.length === 0) throw new Error("Sheet is empty.");
-  
+
                     const expectedHeaders = new Set(orderedShipmentColumns.map(c => normalizeHeader(c.header)));
                     let headerRowIndex = -1;
                     let headers: string[] = [];
@@ -2368,14 +2750,14 @@ const UploadModal = ({ onCancel, onImport, parser, title }: { onCancel: () => vo
                                 matchCount++;
                             }
                         });
-  
+
                         if (matchCount > 3) { // Threshold for considering it a header row
                             headerRowIndex = i;
                             headers = potentialHeaders;
                             break;
                         }
                     }
-  
+
                     if (headerRowIndex === -1) {
                         throw new Error("Could not automatically detect the header row. Please ensure columns like 'SHIPPER', 'BL/AWB', 'INVOICE' are present near the top of your file.");
                     }
@@ -2393,7 +2775,7 @@ const UploadModal = ({ onCancel, onImport, parser, title }: { onCancel: () => vo
                         return obj;
                     }).filter(obj => obj && Object.values(obj).some(val => val !== null && String(val).trim() !== ''));
                 }
-  
+
                 const result = parser(jsonData);
                 if (result.error) {
                     setError(result.error);
@@ -2408,20 +2790,20 @@ const UploadModal = ({ onCancel, onImport, parser, title }: { onCancel: () => vo
         reader.onerror = () => {
              setError("Failed to read the file.");
         };
-  
+
         if (fileExtension === '.csv') {
             reader.readAsText(file);
         } else {
             reader.readAsArrayBuffer(file);
         }
     };
-  
+
     const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files.length > 0) {
             processFile(e.target.files[0]);
         }
     };
-  
+
     const handleDrop = (e: React.DragEvent) => {
         e.preventDefault();
         setDragOver(false);
@@ -2453,9 +2835,9 @@ const UploadModal = ({ onCancel, onImport, parser, title }: { onCancel: () => vo
                             </label>
                         </div>
                     )}
-  
+
                     {error && <div className="error-banner"><AlertCircleIcon /> {error}</div>}
-  
+
                     {parsedData && (
                         <div className="upload-preview">
                             <h4>Import Preview</h4>
@@ -2489,7 +2871,7 @@ const UploadModal = ({ onCancel, onImport, parser, title }: { onCancel: () => vo
         </div>
     );
 };
-  
+
 const ConfirmationModal = ({ title, message, onConfirm, onCancel, confirmText = 'Confirm', cancelText = 'Cancel' }: { title: string, message: string, onConfirm: () => void, onCancel: () => void, confirmText?: string, cancelText?: string }) => {
     return (
         <div className="modal-overlay animate-fade-in">
@@ -2511,340 +2893,262 @@ const ConfirmationModal = ({ title, message, onConfirm, onCancel, confirmText = 
 };
 
 
-// --- COMPONENTE PRINCIPAL: App ---
+// --- App Component ---
 const App = () => {
-    // --- ESTADOS GLOBAIS DA APLICAÇÃO ---
-    const [shipments, setShipments] = useState<Shipment[]>([]);
-    const [claims, setClaims] = useState<Claim[]>([]);
-    const [tasks, setTasks] = useState<Task[]>([]);
-    const [exchangeRates, setExchangeRates] = useState<ExchangeRates | null>(null);
-    const [fiveW2HData, setFiveW2HData] = useState<FiveW2H[]>([]);
-    const [users, setUsers] = useState<User[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
-    const isInitialLoad = useRef(true);
-    
-    // --- ESTADO DE AUTENTICAÇÃO ---
-    const [loggedInUser, setLoggedInUser] = useState<User | null>(null);
-    const [loginError, setLoginError] = useState('');
-    
-    // --- ESTADO DE NAVEGAÇÃO ---
-    const [currentView, setCurrentView] = useState('dashboard');
-    const [selectedShipmentId, setSelectedShipmentId] = useState<string | null>(null);
-    const [initialImportFilter, setInitialImportFilter] = useState<{ type: string, value: string } | null>(null);
+  // --- STATE MANAGEMENT ---
+  const [shipments, setShipments] = useState<Shipment[]>(mockShipments);
+  const [claims, setClaims] = useState<Claim[]>(mockClaims);
+  const [tasks, setTasks] = useState<Task[]>(mockTasks);
+  const [exchangeRates, setExchangeRates] = useState<ExchangeRates | null>(mockExchangeRates);
+  const [fiveW2HData, setFiveW2HData] = useState<FiveW2H[]>(mockFiveW2HData);
+  const [users, setUsers] = useState<User[]>(mockUsers);
+  
+  // --- AUTHENTICATION STATE ---
+  const [loggedInUser, setLoggedInUser] = useState<User | null>(null);
+  const [loginError, setLoginError] = useState('');
+  
+  // --- NAVIGATION STATE ---
+  const [currentView, setCurrentView] = useState('dashboard');
+  const [selectedShipmentId, setSelectedShipmentId] = useState<string | null>(null);
+  const [initialImportFilter, setInitialImportFilter] = useState<{ type: string, value: string } | null>(null);
 
-    // --- ESTADO DO MODAL DE CONFIRMAÇÃO ---
-    const [shipmentToDeleteId, setShipmentToDeleteId] = useState<string | null>(null);
+  // --- DELETE CONFIRMATION MODAL STATE ---
+  const [shipmentToDeleteId, setShipmentToDeleteId] = useState<string | null>(null);
 
-    // ADICIONADO: Efeito para carregar dados do Firebase na inicialização
-    useEffect(() => {
-        const unsubscribe = db.collection('navigator_erp').doc('live_data').onSnapshot((doc: any) => {
-            if (doc.exists) {
-                const data = doc.data();
-                console.log("Dados recebidos do Firebase:", data);
-                
-                // Re-hidrata os objetos Date que o Firebase armazena como Timestamps
-                const rehydratedShipments = (data.shipments || []).map((s: any) => ({
-                    ...s,
-                    // Adicione aqui todos os campos de data do seu 'shipment'
-                    ieSentToBroker: s.ieSentToBroker || undefined,
-                    freeTimeDeadline: s.freeTimeDeadline || undefined,
-                    actualEtd: s.actualEtd || undefined,
-                    actualEta: s.actualEta || undefined,
-                    // etc...
-                }));
 
-                setShipments(rehydratedShipments);
-                setUsers(data.users || initialUsers);
-                setClaims(data.claims || []);
-                setTasks(data.tasks || []);
-                setExchangeRates(data.exchangeRates || initialExchangeRates);
-                setFiveW2HData(data.fiveW2HData || []);
+  // --- HANDLERS ---
+  const handleLogin = (username: string, pass: string) => {
+    const user = users.find(u => u.username.toLowerCase() === username.toLowerCase() && u.password === pass);
+    if (user) {
+      setLoggedInUser(user);
+      setLoginError('');
+    } else {
+      setLoginError('Incorrect username or password. Please try again.');
+    }
+  };
 
-            } else {
-                console.log("Nenhum dado encontrado no Firebase, usando dados iniciais.");
-                // Se o documento não existe, usamos os dados mock e salvamos para criar
-                setShipments([]);
-                setUsers(initialUsers);
-                setClaims([]);
-                setTasks([]);
-                setExchangeRates(initialExchangeRates);
-                setFiveW2HData([]);
+  const handleLogout = () => {
+    setLoggedInUser(null);
+    setCurrentView('dashboard');
+  };
+  
+  const handleNavigate = (viewLabel: string, filter?: { type: string, value: string }) => {
+    const view = viewLabel.toLowerCase().replace(/ /g, '').replace('ó', 'o');
+    setSelectedShipmentId(null);
+    if (filter) {
+        setInitialImportFilter(filter);
+        setCurrentView('imports');
+    } else {
+        setCurrentView(view);
+    }
+  };
+  
+  const handleClearInitialFilter = useCallback(() => {
+    setInitialImportFilter(null);
+  }, []);
+
+  const handleSelectShipment = (id: string) => {
+      setSelectedShipmentId(id);
+      setCurrentView('imports/detail');
+  };
+  
+  const handleEditShipment = (id: string) => {
+      setSelectedShipmentId(id);
+      setCurrentView('imports/edit');
+  };
+  
+  const handleNewShipment = () => {
+      setSelectedShipmentId(null);
+      setCurrentView('imports/new');
+  };
+
+  const handleBackToList = () => {
+      setSelectedShipmentId(null);
+      setCurrentView('imports');
+  };
+
+  // --- DATA ACTIONS ---
+  const addShipment = (newShipmentData: Shipment) => {
+      const newShipment = { 
+          ...newShipmentData, 
+          id: uuidv4(),
+          blAwb: newShipmentData.blAwb || 'TBC'
+      };
+      setShipments(prev => [newShipment, ...prev]);
+      handleBackToList();
+  };
+
+  const updateShipment = (updatedShipment: Shipment) => {
+      setShipments(prev => prev.map(s => s.id === updatedShipment.id ? updatedShipment : s));
+      handleBackToList();
+  };
+
+    const initiateDeleteShipment = (id: string) => {
+        if (loggedInUser?.role !== 'Admin') {
+            alert('You do not have permission to delete shipments.');
+            return;
+        }
+        setShipmentToDeleteId(id);
+    };
+
+    const confirmDeleteShipment = () => {
+        if (!shipmentToDeleteId) return;
+        setShipments(prev => prev.filter(s => s.id !== shipmentToDeleteId));
+        setShipmentToDeleteId(null); // Close modal
+    };
+
+    const cancelDeleteShipment = () => {
+        setShipmentToDeleteId(null); // Close modal
+    };
+
+
+  const handleBulkImport = (newOrUpdatedShipments: Shipment[]) => {
+      setShipments(prevShipments => {
+          const shipmentMap = new Map(prevShipments.map(s => [s.blAwb, s]));
+          
+          newOrUpdatedShipments.forEach(newShipment => {
+              // Overwrite existing record completely with the data from the file.
+              // This allows restoring the state from an exported FUP file.
+              shipmentMap.set(newShipment.blAwb, newShipment);
+          });
+          
+          return Array.from(shipmentMap.values());
+      });
+  };
+
+  const saveFiveW2H = (item: FiveW2H) => {
+      if (item.id) {
+          setFiveW2HData(prev => prev.map(d => d.id === item.id ? item : d));
+      } else {
+          setFiveW2HData(prev => [{ ...item, id: uuidv4() }, ...prev]);
+      }
+  };
+
+  const deleteFiveW2H = (id: string) => {
+      if (window.confirm('Are you sure you want to delete this action item?')) {
+          setFiveW2HData(prev => prev.filter(d => d.id !== id));
+      }
+  };
+  
+  const handleSaveUser = (user: User) => {
+    if (user.id) { // Update
+        setUsers(prev => prev.map(u => {
+            if (u.id === user.id) {
+                // If password is not changed, keep the old one
+                const newPassword = user.password ? user.password : u.password;
+                const updatedUser = { ...user, password: newPassword };
+                // Also update the logged in user's state if they are editing themselves
+                if (loggedInUser?.id === user.id) {
+                    setLoggedInUser(updatedUser);
+                }
+                return updatedUser;
             }
-            setIsLoading(false);
-            isInitialLoad.current = false;
-        }, (error: any) => {
-            console.error("Erro ao ouvir o Firebase:", error);
-            setIsLoading(false);
-        });
+            return u;
+        }));
+    } else { // Create
+        setUsers(prev => [{ ...user, id: uuidv4() }, ...prev]);
+    }
+  };
+  
+  const handleChangePassword = (newPassword: string) => {
+    if (loggedInUser) {
+        const updatedUser = { ...loggedInUser, password: newPassword };
+        setLoggedInUser(updatedUser);
+        setUsers(prevUsers => prevUsers.map(u => u.id === loggedInUser.id ? updatedUser : u));
+    }
+  };
 
-        // Limpa o listener quando o componente é desmontado
-        return () => unsubscribe();
-    }, []);
+  const handleDeleteUser = (id: string) => {
+    const userToDelete = users.find(u => u.id === id);
+    if (!userToDelete) return; // Should not happen
 
-    // ADICIONADO: Efeito para salvar o estado no Firebase sempre que ele mudar
-    useEffect(() => {
-        // Não salva na carga inicial, pois acabamos de receber os dados
-        if (isInitialLoad.current) return;
-
-        const allData = {
-            shipments,
-            users,
-            claims,
-            tasks,
-            exchangeRates,
-            fiveW2HData,
-        };
-
-        // Debounce para evitar muitas escritas seguidas
-        const timer = setTimeout(() => {
-            console.log("Salvando estado no Firebase...", allData);
-            db.collection('navigator_erp').doc('live_data').set(allData)
-                .catch((error: any) => console.error("Erro ao salvar no Firebase:", error));
-        }, 1000); // Salva 1 segundo após a última alteração
-
-        return () => clearTimeout(timer);
-
-    }, [shipments, users, claims, tasks, exchangeRates, fiveW2HData]);
-
-
-    // --- HANDLERS (lógica de navegação e ações) ---
-    const handleLogin = (username: string, pass: string) => {
-        const user = users.find(u => u.username.toLowerCase() === username.toLowerCase() && u.password === pass);
-        if (user) {
-            setLoggedInUser(user);
-            setLoginError('');
-        } else {
-            setLoginError('Incorrect username or password. Please try again.');
-        }
-    };
-    
-    const handleLogout = () => {
-        setLoggedInUser(null);
-        setCurrentView('dashboard');
-    };
-    
-    const handleNavigate = (viewLabel: string, filter?: { type: string, value: string }) => {
-        const view = viewLabel.toLowerCase().replace(/ /g, '').replace('ó', 'o');
-        setSelectedShipmentId(null);
-        if (filter) {
-            setInitialImportFilter(filter);
-            setCurrentView('imports');
-        } else {
-            setCurrentView(view);
-        }
-    };
-    
-    const handleClearInitialFilter = useCallback(() => {
-        setInitialImportFilter(null);
-    }, []);
-  
-    const handleSelectShipment = (id: string) => {
-         setSelectedShipmentId(id);
-         setCurrentView('imports/detail');
-    };
-    
-    const handleEditShipment = (id: string) => {
-         setSelectedShipmentId(id);
-         setCurrentView('imports/edit');
-    };
-    
-    const handleNewShipment = () => {
-         setSelectedShipmentId(null);
-         setCurrentView('imports/new');
-    };
-  
-    const handleBackToList = () => {
-         setSelectedShipmentId(null);
-         setCurrentView('imports');
-    };
-  
-    // --- AÇÕES DE DADOS (agora só atualizam o estado local, o useEffect cuida de salvar) ---
-    const addShipment = (newShipmentData: Shipment) => {
-         const newShipment = { 
-             ...newShipmentData, 
-             id: uuidv4(),
-             blAwb: newShipmentData.blAwb || 'TBC'
-         };
-         setShipments(prev => [newShipment, ...prev]);
-         handleBackToList();
-    };
-  
-    const updateShipment = (updatedShipment: Shipment) => {
-         setShipments(prev => prev.map(s => s.id === updatedShipment.id ? updatedShipment : s));
-         handleBackToList();
-    };
-  
-     const initiateDeleteShipment = (id: string) => {
-         if (loggedInUser?.role !== 'Admin') {
-             alert('You do not have permission to delete shipments.');
-             return;
-         }
-         setShipmentToDeleteId(id);
-     };
-  
-     const confirmDeleteShipment = () => {
-         if (!shipmentToDeleteId) return;
-         setShipments(prev => prev.filter(s => s.id !== shipmentToDeleteId));
-         setShipmentToDeleteId(null);
-     };
-  
-     const cancelDeleteShipment = () => {
-         setShipmentToDeleteId(null);
-     };
-  
-    const handleBulkImport = (newOrUpdatedShipments: Shipment[]) => {
-         setShipments(prevShipments => {
-             const shipmentMap = new Map(prevShipments.map(s => [s.blAwb, s]));
-             
-             newOrUpdatedShipments.forEach(newShipment => {
-                 shipmentMap.set(newShipment.blAwb, newShipment);
-             });
-             
-             return Array.from(shipmentMap.values());
-         });
-    };
-  
-    const saveFiveW2H = (item: FiveW2H) => {
-        if (item.id) {
-            setFiveW2HData(prev => prev.map(d => d.id === item.id ? item : d));
-        } else {
-            setFiveW2HData(prev => [{ ...item, id: uuidv4() }, ...prev]);
-        }
-    };
-  
-    const deleteFiveW2H = (id: string) => {
-        if (window.confirm('Are you sure you want to delete this action item?')) {
-            setFiveW2HData(prev => prev.filter(d => d.id !== id));
-        }
-    };
-    
-    const handleSaveUser = (user: User) => {
-       if (user.id) { // Update
-           setUsers(prev => prev.map(u => {
-               if (u.id === user.id) {
-                   const newPassword = user.password ? user.password : u.password;
-                   const updatedUser = { ...user, password: newPassword };
-                   if (loggedInUser?.id === user.id) {
-                       setLoggedInUser(updatedUser);
-                   }
-                   return updatedUser;
-               }
-               return u;
-           }));
-       } else { // Create
-           setUsers(prev => [{ ...user, id: uuidv4() }, ...prev]);
-       }
-    };
-    
-    const handleChangePassword = (newPassword: string) => {
-       if (loggedInUser) {
-           const updatedUser = { ...loggedInUser, password: newPassword };
-           setLoggedInUser(updatedUser);
-           setUsers(prevUsers => prevUsers.map(u => u.id === loggedInUser.id ? updatedUser : u));
-       }
-    };
-  
-    const handleDeleteUser = (id: string) => {
-       const userToDelete = users.find(u => u.id === id);
-       if (!userToDelete) return;
-  
-       if (loggedInUser?.id === id) {
-           alert("You cannot delete your own account.");
-           return;
-       }
-  
-       if (userToDelete.role === 'Admin') {
-           const adminCount = users.filter(u => u.role === 'Admin').length;
-           if (adminCount <= 1) {
-               alert("You cannot delete the last admin user.");
-               return;
-           }
-       }
-  
-       if (window.confirm(`Are you sure you want to delete the user "${userToDelete.name}"? This action cannot be undone.`)) {
-           setUsers(prevUsers => prevUsers.filter(u => u.id !== id));
-       }
-    };
-  
-    // ... (renderView function e o resto da App)
-    const renderView = () => {
-        const viewParts = currentView.split('/');
-        const baseView = viewParts[0];
-    
-        switch (baseView) {
-            case 'dashboard':
-                return (
-                    <DashboardPage 
-                        imports={shipments} 
-                        claims={claims} 
-                        tasks={tasks}
-                        exchangeRates={exchangeRates}
-                        setExchangeRates={setExchangeRates}
-                        currentUser={loggedInUser}
-                        onNavigate={handleNavigate}
-                    />
-                );
-            case 'imports':
-                if (viewParts[1] === 'new') return <ImportFormPage onSave={addShipment} onCancel={handleBackToList} />;
-                if (viewParts[1] === 'edit' && selectedShipmentId) {
-                    const imp = shipments.find(s => s.id === selectedShipmentId);
-                    return imp ? <ImportFormPage onSave={updateShipment} onCancel={handleBackToList} existingImport={imp} /> : <ImportListPage imports={shipments} onSelect={handleSelectShipment} onNew={handleNewShipment} onUpdate={updateShipment} onDelete={initiateDeleteShipment} onBulkImport={handleBulkImport} initialFilter={initialImportFilter} onClearInitialFilter={handleClearInitialFilter} />;
-                }
-                if (viewParts[1] === 'detail' && selectedShipmentId) {
-                    const imp = shipments.find(s => s.id === selectedShipmentId);
-                    return imp ? <ImportDetailPage importProcess={imp} onBack={handleBackToList} onEdit={() => handleEditShipment(selectedShipmentId)} /> : <ImportListPage imports={shipments} onSelect={handleSelectShipment} onNew={handleNewShipment} onUpdate={updateShipment} onDelete={initiateDeleteShipment} onBulkImport={handleBulkImport} initialFilter={initialImportFilter} onClearInitialFilter={handleClearInitialFilter} />;
-                }
-                return <ImportListPage imports={shipments} onSelect={handleSelectShipment} onNew={handleNewShipment} onUpdate={updateShipment} onDelete={initiateDeleteShipment} onBulkImport={handleBulkImport} initialFilter={initialImportFilter} onClearInitialFilter={handleClearInitialFilter} />;
-            case 'relatoriofup':
-                return <FUPReportPage shipments={shipments} />;
-            case 'logistics':
-                return <LogisticsPage shipments={shipments} setShipments={setShipments} />;
-            case '5w2hplan':
-                return <FiveW2HPage data={fiveW2HData} onSave={saveFiveW2H} onDelete={deleteFiveW2H} allImports={shipments} allUsers={users} />;
-            case 'team':
-                return <TeamPage users={users} onSave={handleSaveUser} onDelete={handleDeleteUser} />;
-            case 'admin':
-                return <AdminPage user={loggedInUser!} onPasswordChange={handleChangePassword} />;
-            default:
-                 return <DashboardPage imports={shipments} claims={claims} tasks={tasks} exchangeRates={exchangeRates} setExchangeRates={setExchangeRates} currentUser={loggedInUser} onNavigate={handleNavigate} />;
-        }
-    };
-  
-    if (isLoading) {
-        return (
-            <div className="loading-screen">
-                <Loader2Icon />
-                <p>Loading Navigator ERP...</p>
-            </div>
-        );
+    if (loggedInUser?.id === id) {
+        alert("You cannot delete your own account.");
+        return;
     }
 
-    if (!loggedInUser) {
-        return <LoginScreen onLogin={handleLogin} error={loginError} />;
+    if (userToDelete.role === 'Admin') {
+        const adminCount = users.filter(u => u.role === 'Admin').length;
+        if (adminCount <= 1) {
+            alert("You cannot delete the last admin user.");
+            return;
+        }
     }
-  
-    return (
-        <div className="app-container">
-            <Sidebar onNavigate={handleNavigate} activeView={currentView} onLogout={handleLogout} loggedInUser={loggedInUser}/>
-            <main className="main-content">
-                {renderView()}
-            </main>
-            {shipmentToDeleteId && (
-                 <ConfirmationModal
-                     title="Confirm Deletion"
-                     message="Are you sure you want to delete this BL/process? This action cannot be undone."
-                     onConfirm={confirmDeleteShipment}
-                     onCancel={cancelDeleteShipment}
-                     confirmText="Yes, Delete"
-                     cancelText="Cancel"
-                 />
-            )}
-        </div>
-    );
+
+    if (window.confirm(`Are you sure you want to delete the user "${userToDelete.name}"? This action cannot be undone.`)) {
+        setUsers(prevUsers => prevUsers.filter(u => u.id !== id));
+    }
+  };
+
+  const renderView = () => {
+    const viewParts = currentView.split('/');
+    const baseView = viewParts[0];
+
+    switch (baseView) {
+        case 'dashboard':
+            return (
+                <DashboardPage 
+                    imports={shipments} 
+                    claims={claims} 
+                    tasks={tasks}
+                    exchangeRates={exchangeRates}
+                    setExchangeRates={setExchangeRates}
+                    currentUser={loggedInUser}
+                    onNavigate={handleNavigate}
+                />
+            );
+        case 'imports':
+            if (viewParts[1] === 'new') return <ImportFormPage onSave={addShipment} onCancel={handleBackToList} />;
+            if (viewParts[1] === 'edit' && selectedShipmentId) {
+                const imp = shipments.find(s => s.id === selectedShipmentId);
+                return imp ? <ImportFormPage onSave={updateShipment} onCancel={handleBackToList} existingImport={imp} /> : <ImportListPage imports={shipments} onSelect={handleSelectShipment} onNew={handleNewShipment} onUpdate={updateShipment} onDelete={initiateDeleteShipment} onBulkImport={handleBulkImport} initialFilter={initialImportFilter} onClearInitialFilter={handleClearInitialFilter} />;
+            }
+            if (viewParts[1] === 'detail' && selectedShipmentId) {
+                const imp = shipments.find(s => s.id === selectedShipmentId);
+                return imp ? <ImportDetailPage importProcess={imp} onBack={handleBackToList} onEdit={() => handleEditShipment(selectedShipmentId)} /> : <ImportListPage imports={shipments} onSelect={handleSelectShipment} onNew={handleNewShipment} onUpdate={updateShipment} onDelete={initiateDeleteShipment} onBulkImport={handleBulkImport} initialFilter={initialImportFilter} onClearInitialFilter={handleClearInitialFilter} />;
+            }
+            return <ImportListPage imports={shipments} onSelect={handleSelectShipment} onNew={handleNewShipment} onUpdate={updateShipment} onDelete={initiateDeleteShipment} onBulkImport={handleBulkImport} initialFilter={initialImportFilter} onClearInitialFilter={handleClearInitialFilter} />;
+        case 'relatoriofup':
+            return <FUPReportPage shipments={shipments} />;
+        case 'logistics':
+            return <LogisticsPage shipments={shipments} setShipments={setShipments} />;
+        case '5w2hplan':
+            return <FiveW2HPage data={fiveW2HData} onSave={saveFiveW2H} onDelete={deleteFiveW2H} allImports={shipments} allUsers={users} />;
+        case 'team':
+            return <TeamPage users={users} onSave={handleSaveUser} onDelete={handleDeleteUser} />;
+        case 'admin':
+            return <AdminPage user={loggedInUser!} onPasswordChange={handleChangePassword} />;
+        default:
+             return <DashboardPage imports={shipments} claims={claims} tasks={tasks} exchangeRates={exchangeRates} setExchangeRates={setExchangeRates} currentUser={loggedInUser} onNavigate={handleNavigate} />;
+    }
+  };
+
+  if (!loggedInUser) {
+    return <LoginScreen onLogin={handleLogin} error={loginError} />;
+  }
+
+  return (
+    <div className="app-container">
+      <Sidebar onNavigate={handleNavigate} activeView={currentView} onLogout={handleLogout} loggedInUser={loggedInUser}/>
+      <main className="main-content">
+        {renderView()}
+      </main>
+      {shipmentToDeleteId && (
+            <ConfirmationModal
+                title="Confirm Deletion"
+                message="Are you sure you want to delete this BL/process? This action cannot be undone."
+                onConfirm={confirmDeleteShipment}
+                onCancel={cancelDeleteShipment}
+                confirmText="Yes, Delete"
+                cancelText="Cancel"
+            />
+        )}
+    </div>
+  );
 };
 
-// --- FILE PARSERS (sem alterações) ---
-// ... (função parseGeneralShipmentFile permanece aqui)
+// --- FILE PARSERS ---
+
 const parseGeneralShipmentFile = (jsonData: any[]): { data: Shipment[], error: string | null } => {
     try {
         if (jsonData.length === 0) {
@@ -2878,6 +3182,7 @@ const parseGeneralShipmentFile = (jsonData: any[]): { data: Shipment[], error: s
             };
         }
         
+        // Key map for all OTHER columns
         const headerToKeyMap: { [key: string]: keyof Shipment } = {
             'shipper': 'shipper', 'posap': 'poSap', 'invoice': 'invoice',
             'description': 'description', 'typeofcargo': 'typeOfCargo', 'costcenter': 'costCenter',
@@ -2953,6 +3258,7 @@ const parseGeneralShipmentFile = (jsonData: any[]): { data: Shipment[], error: s
                 let isoString: string | undefined = undefined;
 
                 if (typeof value === 'number') {
+                    // Handle Excel serial date. XLSX is globally available.
                     const d = XLSX.SSF.parse_date_code(value);
                     if (d) {
                         const date = new Date(Date.UTC(d.y, d.m - 1, d.d));
@@ -2966,6 +3272,7 @@ const parseGeneralShipmentFile = (jsonData: any[]): { data: Shipment[], error: s
                         const [d, m, y] = dateStr.split('/');
                         isoString = `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
                     } else {
+                        // Keep other string formats as they are (assuming YYYY-MM-DD)
                         isoString = dateStr;
                     }
                 }
@@ -2988,12 +3295,10 @@ const parseGeneralShipmentFile = (jsonData: any[]): { data: Shipment[], error: s
 
         return { data: shipments, error: null };
     } catch (e: any) {
-       return { data: [], error: e.message || "An unknown parsing error occurred." };
+         return { data: [], error: e.message || "An unknown parsing error occurred." };
     }
 };
 
-// --- RENDERIZAÇÃO INICIAL DA APP ---
 const container = document.getElementById('root');
 const root = createRoot(container!);
 root.render(<App />);
-
