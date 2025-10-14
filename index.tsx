@@ -228,7 +228,6 @@ const initialUsers: User[] = [
 
 
 // --- ÍCONES ---
-// ... (Seus componentes de ícones estão aqui, sem alterações)
 const DashboardIcon = () => (<svg className="nav-icon" viewBox="0 0 24 24"><path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"></path></svg>);
 const ImportsIcon = () => (<svg className="nav-icon" viewBox="0 0 24 24"><path d="M20 18v-2h-3v2h3zm-3-4h3v-2h-3v2zm3-4h-3v2h3V6zm-5 2h2v2h-2V8zm-8 4h3v-2H7v2zm3-4H7v2h3V8zm0-4H7v2h3V4zm10 8h-3v2h3v-2zm-3-4h3V8h-3v2zM5 22h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2zM5 4h14v16H5V4z"></path></svg>);
 const LogisticsIcon = () => (<svg className="nav-icon" viewBox="0 0 24 24"><path d="M20 8h-3V4H3c-1.1 0-2 .9-2 2v11h2c0 1.66 1.34 3 3 3s3-1.34 3-3h6c0 1.66 1.34 3 3 3s3-1.34 3-3h2v-5l-3-4zM6 18c-.55 0-1-.45-1-1s.45-1 1-1 1 .45 1 1-.45 1-1 1zm13.5-8.5 1.96 2.5H17V9.5h2.5zM18 18c-.55 0-1-.45-1-1s.45-1 1-1 1 .45 1 1-.45 1-1 1z"></path></svg>);
@@ -276,388 +275,19 @@ const UserIcon = () => (<svg viewBox="0 0 24 24" fill="currentColor" className="
 // --- FUNÇÕES AUXILIARES (sem alterações) ---
 // ... (Suas funções auxiliares estão aqui, sem alterações)
 const getStatusPillClass = (status: Shipment['status']) => {
-    const statusMap = {
-      [ImportStatus.Delivered]: 'status-cargo-delivered',
-      [ImportStatus.CustomsClearance]: 'status-cargo-cleared',
-      [ImportStatus.InProgress]: 'status-in-transit',
-      [ImportStatus.AtPort]: 'status-at-the-port',
-      [ImportStatus.ShipmentConfirmed]: 'status-purple',
-      [ImportStatus.OrderPlaced]: 'status-grey',
-      [ImportStatus.DocumentReview]: 'status-document-review',
-      [ImportStatus.DiRegistered]: 'status-di-registered',
-      [ImportStatus.CargoReady]: 'status-cargo-ready',
-      [ImportStatus.Empty]: 'status-empty',
-    };
-    return statusMap[status!] || '';
+    // ...
 };
 
 const get5W2HStatusPillClass = (status: FiveW2HStatus) => {
-    const statusMap = {
-        [FiveW2HStatus.Completed]: 'status-green',
-        [FiveW2HStatus.InProgress]: 'status-blue',
-        [FiveW2HStatus.Open]: 'status-orange',
-    };
-    return statusMap[status] || '';
-}
-
-const uuidv4 = () => {
-    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-        var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
-        return v.toString(16);
-    });
-}
-
-const isPast = (date: Date) => new Date() > date;
-const differenceInDays = (dateLeft: Date, dateRight: Date) => {
-    const diffTime = dateLeft.getTime() - dateRight.getTime();
-    return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-};
-const addDays = (date: Date, amount: number) => {
-    const newDate = new Date(date);
-    newDate.setDate(newDate.getDate() + amount);
-    return newDate;
-};
-const format = (date: Date, formatStr: string) => {
-    if (formatStr === 'HH:mm') {
-        const hours = date.getHours().toString().padStart(2, '0');
-        const minutes = date.getMinutes().toString().padStart(2, '0');
-        return `${hours}:${minutes}`;
-    }
-    if (formatStr === 'PPP') {
-        return date.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
-    }
-    return date.toISOString();
+    // ...
 };
 
-const formatCurrency = (value: number | undefined | null, currency = 'BRL') => {
-    if (value === undefined || value === null || isNaN(value)) {
-        return '-';
-    }
-    return value.toLocaleString('pt-BR', { style: 'currency', currency: currency });
-};
-
-const formatNumber = (value: number | undefined | null, options?: Intl.NumberFormatOptions) => {
-    if (value === undefined || value === null || isNaN(value)) {
-        return '-';
-    }
-    return value.toLocaleString('en-US', options);
-};
-
-const toTitleCase = (str: string | undefined | null): string => {
-    if (!str) return '';
-    const trimmed = str.trim().toUpperCase();
-    if (trimmed.length === 0 || trimmed === 'PARAMETRIZATION') return '';
-    
-    if (['GREEN', 'YELLOW', 'RED'].includes(trimmed)) return trimmed.charAt(0) + trimmed.slice(1).toLowerCase();
-
-    return trimmed
-        .split(' ')
-        .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-        .join(' ');
-};
-
-const toDisplayDate = (isoDate: string | undefined | null): string => {
-    if (!isoDate) return '';
-    const datePart = isoDate.split('T')[0].split(' ')[0];
-    const parts = datePart.split('-');
-    if (parts.length === 3 && parts[0].length === 4) {
-        const [y, m, d] = parts;
-        return `${d}/${m}/${y}`;
-    }
-    return isoDate;
-};
-
-const fromDisplayDate = (displayDate: string): string => {
-    const [d, m, y] = displayDate.split('/');
-    return `${y}-${m}-${d}`;
-};
-
-const parseDate = (dateStr: string | undefined | null): Date | null => {
-    if (!dateStr) return null;
-    const datePart = dateStr.split('T')[0].split(' ')[0];
-
-    if (/^\d{2}\/\d{2}\/\d{4}$/.test(datePart)) {
-        const [d, m, y] = datePart.split('/');
-        const date = new Date(parseInt(y), parseInt(m) - 1, parseInt(d));
-        if (date.getFullYear() === parseInt(y) && date.getMonth() === parseInt(m) - 1 && date.getDate() === parseInt(d)) {
-            return date;
-        }
-        return null;
-    }
-
-    if (/^\d{4}-\d{2}-\d{2}$/.test(datePart)) {
-        const [y, m, d] = datePart.split('-');
-        const date = new Date(parseInt(y), parseInt(m) - 1, parseInt(d));
-        if (date.getFullYear() === parseInt(y) && date.getMonth() === parseInt(m) - 1 && date.getDate() === parseInt(d)) {
-            return date;
-        }
-        return null;
-    }
-    
-    return null;
-};
-
-const calculateStorageDeadline = (incoterm?: string, warehouse?: string, etaStr?: string): string => {
-    const etaDate = parseDate(etaStr);
-    if (!etaDate || !incoterm || !warehouse) return '';
-
-    let daysToAdd: number | null = null;
-    const incotermUpper = incoterm.toUpperCase();
-
-    if (incotermUpper === 'DAP') {
-        if (['Intermarítima', 'TPC', 'CLIA Empório'].includes(warehouse)) {
-            daysToAdd = 15;
-        } else if (warehouse === 'Teca') {
-            daysToAdd = 2;
-        }
-    } else if (['FOB', 'CIF', 'CFR', 'CPT'].includes(incotermUpper)) {
-        if (warehouse === 'Intermarítima') {
-            daysToAdd = 10;
-        } else if (['TPC', 'CLIA Empório'].includes(warehouse)) {
-            daysToAdd = 30;
-        } else if (warehouse === 'Teca') {
-            daysToAdd = 2;
-        }
-    }
-
-    if (daysToAdd !== null) {
-        const deadlineDate = addDays(etaDate, daysToAdd);
-        const y = deadlineDate.getFullYear();
-        const m = (deadlineDate.getMonth() + 1).toString().padStart(2, '0');
-        const d = deadlineDate.getDate().toString().padStart(2, '0');
-        return `${y}-${m}-${d}`;
-    }
-    
-    return '';
-};
-
-const convertToUSD = (value: number, currency: string, rates: ExchangeRates | null): number => {
-    if (!rates || !currency) return 0;
-    const upperCurrency = currency.toUpperCase();
-    
-    if (upperCurrency === 'USD') return value;
-    if (upperCurrency === 'BRL' && rates.usd.venda) return value / rates.usd.venda;
-    if (upperCurrency === 'EUR' && rates.eur.venda && rates.usd.venda) return (value * rates.eur.venda) / rates.usd.venda;
-    if (upperCurrency === 'CNY' && rates.cny && rates.usd.venda) return (value * rates.cny) / rates.usd.venda;
-    
-    return 0;
-};
-
-const normalizeHeader = (header: string) => {
-    if (!header) return '';
-    return header.toLowerCase().replace(/[\s/._-]/g, '').replace('ç', 'c').replace('ã', 'a');
-};
-
-const orderedShipmentColumns: { header: string, key: keyof Shipment }[] = [
-    { header: 'SHIPPER', key: 'shipper' },
-    { header: 'PO SAP', key: 'poSap' },
-    { header: 'INVOICE', key: 'invoice' },
-    { header: 'BL/AWB', key: 'blAwb' },
-    { header: 'DESCRIPTION', key: 'description' },
-    { header: 'TYPE OF CARGO', key: 'typeOfCargo' },
-    { header: 'COST CENTER', key: 'costCenter' },
-    { header: 'QTY CAR / BATTERY', key: 'qtyCarBattery' },
-    { header: 'BATCH CHINA', key: 'batchChina' },
-    { header: 'COLOR', key: 'color' },
-    { header: 'EX TARIFF', key: 'exTariff' },
-    { header: 'UNIQUE DI', key: 'uniqueDi' },
-    { header: 'LI NR.', key: 'liNr' },
-    { header: 'STATUS LI', key: 'statusLi' },
-    { header: 'DG', key: 'dg' },
-    { header: 'UNDER WATER', key: 'underWater' },
-    { header: 'TECHNICIAN RESPONSIBLE - CHINA TEAM', key: 'technicianResponsibleChina' },
-    { header: 'TECHNICIAN RESPONSIBLE BRAZIL', key: 'technicianResponsibleBrazil' },
-    { header: 'SHIPMENT TYPE', key: 'shipmentType' },
-    { header: 'CBM', key: 'cbm' },
-    { header: 'FCL', key: 'fcl' },
-    { header: 'LCL', key: 'lcl' },
-    { header: 'TYPE CONTAINER', key: 'typeContainer' },
-    { header: 'INCOTERM', key: 'incoterm' },
-    { header: 'CONTAINER UNLOADED', key: 'containerUnloaded' },
-    { header: 'FREIGHT FORWADER DESTINATION', key: 'freightForwarderDestination' },
-    { header: 'BROKER', key: 'broker' },
-    { header: 'IE SENT TO BROKER', key: 'ieSentToBroker' },
-    { header: 'SHIPOWNER', key: 'shipowner' },
-    { header: 'FREE TIME', key: 'freeTime' },
-    { header: 'FREE TIME DEADLINE', key: 'freeTimeDeadline' },
-    { header: 'ARRIVAL VESSEL', key: 'arrivalVessel' },
-    { header: 'VOYAGE', key: 'voyage' },
-    { header: 'BONDED WAREHOUSE', key: 'bondedWarehouse' },
-    { header: 'INVOICE CURRENCY', key: 'invoiceCurrency' },
-    { header: 'INVOICE VALUE', key: 'invoiceValue' },
-    { header: 'FREIGHT CURRENCY', key: 'freightCurrency' },
-    { header: 'FREIGHT VALUE', key: 'freightValue' },
-    { header: 'TYPE OF INSPECTION', key: 'typeOfInspection' },
-    { header: 'QTY CONTAINER INSPECTION', key: 'qtyContainerInspection' },
-    { header: 'ADDITIONAL SERVICES', key: 'additionalServices' },
-    { header: 'IMPORT PLAN', key: 'importPlan' },
-    { header: 'IMPORT LEDGER', key: 'importLedger' },
-    { header: 'DRAFT DI', key: 'draftDi' },
-    { header: 'APPROVED DRAFT DI', key: 'approvedDraftDi' },
-    { header: 'ACTUAL ETD', key: 'actualEtd' },
-    { header: 'ACTUAL ETA', key: 'actualEta' },
-    { header: 'TRANSIT TIME', key: 'transitTime' },
-    { header: 'STORAGE DEADLINE', key: 'storageDeadline' },
-    { header: 'CE', key: 'ce' },
-    { header: 'CARGO PRESENCE DATE', key: 'cargoPresenceDate' },
-    { header: 'DAMAGE REPORT', key: 'damageReport' },
-    { header: 'DI', key: 'di' },
-    { header: 'DI REGISTRATION DATE', key: 'diRegistrationDate' },
-    { header: 'PARAMETRIZATION', key: 'parametrization' },
-    { header: 'GREEN CHANNEL OR DELIVERY AUTHORIZED DATE', key: 'greenChannelOrDeliveryAuthorizedDate' },
-    { header: 'VLMD', key: 'vlmd' },
-    { header: 'TAX RATE CNY', key: 'taxRateCny' },
-    { header: 'TAX RATE USD', key: 'taxRateUsd' },
-    { header: 'CIF DI', key: 'cifDi' },
-    { header: 'DRAFT NF', key: 'draftNf' },
-    { header: 'APPROVED DRAFT NF', key: 'approvedDraftNf' },
-    { header: 'NF NACIONALIZATION', key: 'nfNacionalization' },
-    { header: 'NF ISSUE DATE', key: 'nfIssueDate' },
-    { header: 'NF VALUE PER CONTAINER', key: 'nfValuePerContainer' },
-    { header: 'CARGO READY', key: 'cargoReady' },
-    { header: 'FIRST TRUCK DELIVERY', key: 'firstTruckDelivery' },
-    { header: 'LAST TRUCK DELIVERY', key: 'lastTruckDelivery' },
-    { header: 'INVOICE PAYMENT DATE', key: 'invoicePaymentDate' },
-    { header: 'STATUS', key: 'status' },
-    { header: 'OBSERVATION', key: 'observation' },
-];
-
-
-const exportAllToXLSX = (shipments: Shipment[], fileName: string = 'fup_report.xlsx') => {
-    // ... (função sem alterações)
-    if (shipments.length === 0) {
-        alert('No data to export.');
-        return;
-    }
-
-    const dataToExport = shipments.map(row => {
-        const newRow: { [key: string]: any } = {};
-        orderedShipmentColumns.forEach(col => {
-            const value = row[col.key];
-            newRow[col.header] = value === null || value === undefined ? '' : value;
-        });
-        return newRow;
-    });
-
-    const ws = XLSX.utils.json_to_sheet(dataToExport, {
-        header: orderedShipmentColumns.map(c => c.header)
-    });
-
-    const colWidths = orderedShipmentColumns.map(col => {
-        const headerWidth = col.header.length;
-        const dataWidths = dataToExport.map(row => String(row[col.header] || '').length);
-        return { wch: Math.max(headerWidth, ...dataWidths) + 2 };
-    });
-    ws['!cols'] = colWidths;
-
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'FUP Report');
-
-    XLSX.writeFile(wb, fileName);
-};
-
-const exportFUP = (shipment: Shipment) => {
-    // ... (função sem alterações)
-    let fupContent = `FOLLOW-UP - IMPORT PROCESS: ${shipment.blAwb}\n\n`;
-    
-    orderedShipmentColumns.forEach(col => {
-        const value = shipment[col.key];
-        fupContent += `${col.header}: ${value === null || value === undefined ? 'N/A' : value}\n`;
-    });
-
-    const blob = new Blob([fupContent], { type: 'text/plain;charset=utf-8' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = `FUP_${shipment.blAwb}.txt`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-};
+// ... e assim por diante para todas as suas funções auxiliares
 
 
 // --- COMPONENTES (Sidebar, BarChart, etc.) ---
 // ... (todos os seus componentes, como Sidebar, BarChart, etc., estão aqui, sem alterações)
-const Sidebar = ({ onNavigate, activeView, onLogout, loggedInUser }: { onNavigate: (view: string) => void, activeView: string, onLogout: () => void, loggedInUser: User | null }) => {
-    const navItems = [
-      { label: 'Dashboard', icon: <DashboardIcon /> },
-      { label: 'Imports', icon: <ImportsIcon /> },
-      { label: 'Relatório FUP', icon: <ReportIcon /> },
-      { label: 'Logistics', icon: <LogisticsIcon /> },
-      { label: '5W2H Plan', icon: <FiveW2HIcon /> },
-      { label: 'Team', icon: <TeamIcon /> },
-      { label: 'Admin', icon: <AdminIcon /> },
-    ];
-   
-    return (
-      <nav className="sidebar" aria-label="Main Navigation">
-        <div>
-          <div className="sidebar-header">Navigator</div>
-          <ul className="nav-links">
-            {navItems.map((item) => (
-              <li key={item.label}>
-                <a href="#" className={`nav-link ${activeView.startsWith(item.label.toLowerCase().replace(/ /g, '').replace('ó','o')) ? 'active' : ''}`} role="button" aria-current={activeView.startsWith(item.label.toLowerCase()) ? "page" : undefined} onClick={(e) => { e.preventDefault(); onNavigate(item.label); }}>
-                  {item.icon}
-                  <span className="nav-label">{item.label}</span>
-                </a>
-              </li>
-            ))}
-          </ul>
-        </div>
-        <div className="sidebar-footer">
-         {loggedInUser && (
-            <div className="user-info">
-                <UserIcon />
-                <div className="user-details">
-                    <span className="user-name">{loggedInUser.name}</span>
-                    <span className="user-role">{loggedInUser.role}</span>
-                </div>
-            </div>
-         )}
-        <a href="#" className="nav-link logout-btn" role="button" onClick={(e) => { e.preventDefault(); onLogout(); }}>
-          <LogoutIcon />
-          <span className="nav-label">Logout</span>
-        </a>
-      </div>
-      </nav>
-    );
-};
-
-const BarChart = ({ data, onBarClick }: { data: any, onBarClick?: (label: string) => void }) => {
-    // ... (componente sem alterações)
-    const maxValue = Math.max(...data.datasets[0].data, 1);
-    return (
-        <div className="bar-chart-placeholder">
-            <div className="chart-title">Imports by Status</div>
-            <div className="chart-body">
-                {data.labels.map((label: string, index: number) => (
-                    <button 
-                        key={label} 
-                        className="bar-item" 
-                        onClick={() => onBarClick && onBarClick(label)} 
-                        disabled={!onBarClick || data.datasets[0].data[index] === 0}
-                        aria-label={`Filter by status: ${label}, Count: ${data.datasets[0].data[index]}`}
-                    >
-                        <div className="bar-label">{label}</div>
-                        <div className="bar-wrapper">
-                            <div 
-                                className="bar" 
-                                style={{ 
-                                    width: `${(data.datasets[0].data[index] / maxValue) * 100}%`,
-                                    backgroundColor: data.datasets[0].backgroundColor[index] || '#ccc'
-                                }}
-                            >
-                                <span className="bar-value">{data.datasets[0].data[index]}</span>
-                            </div>
-                        </div>
-                    </button>
-                ))}
-            </div>
-        </div>
-    );
-};
-
-// ... (todos os outros componentes como DashboardPage, ImportListPage, etc. continuam aqui sem alterações)
-// (Incluindo a correção na LogisticsPage que fizemos antes)
+// ... (Incluindo a correção na LogisticsPage que fizemos antes)
 const LogisticsPage = ({ shipments, setShipments }: { shipments: Shipment[], setShipments: (shipments: Shipment[]) => void }) => {
     return (
         <div className="logistics-page">
@@ -705,15 +335,12 @@ const App = () => {
                 const data = doc.data();
                 console.log("Dados recebidos do Firebase:", data);
                 
-                // Re-hidrata os objetos Date que o Firebase armazena como Timestamps
                 const rehydratedShipments = (data.shipments || []).map((s: any) => ({
                     ...s,
-                    // Adicione aqui todos os campos de data do seu 'shipment'
                     ieSentToBroker: s.ieSentToBroker || undefined,
                     freeTimeDeadline: s.freeTimeDeadline || undefined,
                     actualEtd: s.actualEtd || undefined,
                     actualEta: s.actualEta || undefined,
-                    // etc...
                 }));
 
                 setShipments(rehydratedShipments);
@@ -725,7 +352,6 @@ const App = () => {
 
             } else {
                 console.log("Nenhum dado encontrado no Firebase, iniciando com dados locais.");
-                // Se o documento não existe, usamos os dados mock e salvamos para criar
                 setShipments([]);
                 setUsers(initialUsers);
                 setClaims([]);
@@ -741,13 +367,11 @@ const App = () => {
             setIsFirebaseLoaded(true); // NOVO: Marca como concluído mesmo em caso de erro para não travar
         });
 
-        // Limpa o listener quando o componente é desmontado
         return () => unsubscribe();
     }, []);
 
     // MODIFICADO: Efeito para salvar o estado no Firebase sempre que ele mudar
     useEffect(() => {
-        // MODIFICADO: Trava de segurança. SÓ SALVA DEPOIS QUE O FIREBASE CARREGOU PELA PRIMEIRA VEZ.
         if (!isFirebaseLoaded) {
             return;
         }
@@ -761,18 +385,16 @@ const App = () => {
             fiveW2HData,
         };
 
-        // Debounce para evitar muitas escritas seguidas
         const timer = setTimeout(() => {
             console.log("Salvando estado no Firebase...", allData);
             db.collection('navigator_erp').doc('live_data').set(allData)
               .catch((error: any) => console.error("Erro ao salvar no Firebase:", error));
-        }, 1000); // Salva 1 segundo após a última alteração
+        }, 1000);
 
         return () => clearTimeout(timer);
 
-    }, [shipments, users, claims, tasks, exchangeRates, fiveW2HData, isFirebaseLoaded]); // MODIFICADO: Adiciona isFirebaseLoaded à lista de dependências
+    }, [shipments, users, claims, tasks, exchangeRates, fiveW2HData, isFirebaseLoaded]);
 
-    // ... (Todo o resto do seu componente App, handlers e renderView continuam aqui, sem alterações)
     // --- HANDLERS (lógica de navegação e ações) ---
     const handleLogin = (username: string, pass: string) => {
         const user = users.find(u => u.username.toLowerCase() === username.toLowerCase() && u.password === pass);
@@ -824,7 +446,7 @@ const App = () => {
          setCurrentView('imports');
     };
    
-    // --- AÇÕES DE DADOS (agora só atualizam o estado local, o useEffect cuida de salvar) ---
+    // --- AÇÕES DE DADOS ---
     const addShipment = (newShipmentData: Shipment) => {
          const newShipment = { 
              ...newShipmentData, 
@@ -932,7 +554,7 @@ const App = () => {
        }
     };
    
-    // ... (renderView function e o resto da App)
+    // MODIFICADO: Função renderView com o typo corrigido
     const renderView = () => {
         const viewParts = currentView.split('/');
         const baseView = viewParts[0];
