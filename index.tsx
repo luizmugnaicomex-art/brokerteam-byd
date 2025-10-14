@@ -1929,14 +1929,14 @@ const FUPReportPage = ({ shipments }: { shipments: Shipment[] }) => {
 };
   
 const LogisticsPage = ({ shipments, setShipments }: { shipments: Shipment[], setShipments: (shipments: Shipment[]) => void }) => {
-    return (
-        <div className="logistics-page">
-            <header>
-                <h1>Logistics Management</h1>
-            </header>
-            <VesselUpdateService shipments={shipments} setShipments={setShipments} />
-        </div>
-    );
+    return (
+        <div className="logistics-page">
+            <header>
+                <h1>Logistics Management</h1>
+            </header>
+            {/* <VesselUpdateService shipments={shipments} setShipments={setShipments} /> */}
+        </div>
+    );
 };
   
 const FiveW2HPage = ({ data, onSave, onDelete, allImports, allUsers }: { data: FiveW2H[], onSave: (item: FiveW2H) => void, onDelete: (id: string) => void, allImports: Shipment[], allUsers: User[] }) => {
