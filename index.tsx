@@ -17,7 +17,6 @@ const firebaseConfig = {
 
 // Evita reinicialização do Firebase
 if (!firebase.apps.length) {
-    // CORRIGIDO: O 'i' deve ser minúsculo
     firebase.initializeApp(firebaseConfig);
 }
 const db = firebase.firestore();
@@ -73,80 +72,80 @@ interface Cost {
 }
 
 interface Shipment {
-  id: string; 
-  blAwb: string;
-  poSap?: string;
-  invoice?: string;
-  description?: string;
-  typeOfCargo?: string;
-  costCenter?: string;
-  qtyCarBattery?: number;
-  batchChina?: string;
-  color?: string;
-  exTariff?: string;
-  dg?: 'Yes' | 'No' | '';
-  uniqueDi?: 'Yes' | 'No' | '';
-  liNr?: string;
-  statusLi?: string;
-  underWater?: 'Yes' | 'No' | '';
-  technicianResponsibleChina?: string;
-  technicianResponsibleBrazil?: string;
-  shipmentType?: string;
-  cbm?: number;
-  fcl?: number;
-  lcl?: number;
-  typeContainer?: string;
-  incoterm?: string;
-  containerUnloaded?: number;
-  freightForwarderDestination?: string;
-  shipper?: string;
-  broker?: string;
-  shipowner?: string;
-  ieSentToBroker?: string;
-  freeTime?: number;
-  freeTimeDeadline?: string;
-  arrivalVessel?: string;
-  voyage?: string;
-  bondedWarehouse?: string;
-  actualEtd?: string;
-  actualEta?: string;
-  transitTime?: number;
-  storageDeadline?: string;
-  cargoPresenceDate?: string;
-  diRegistrationDate?: string;
-  greenChannelOrDeliveryAuthorizedDate?: string;
-  nfIssueDate?: string;
-  cargoReady?: string;
-  firstTruckDelivery?: string;
-  lastTruckDelivery?: string;
-  invoicePaymentDate?: string;
-  invoiceCurrency?: string;
-  invoiceValue?: number;
-  freightCurrency?: string;
-  freightValue?: number;
-  vlmd?: string;
-  taxRateCny?: number;
-  taxRateUsd?: number;
-  cifDi?: string;
-  nfValuePerContainer?: number;
-  typeOfInspection?: string;
-  qtyContainerInspection?: number;
-  additionalServices?: string;
-  importPlan?: string;
-  importLedger?: string;
-  draftDi?: string;
-  approvedDraftDi?: string;
-  ce?: string;
-  damageReport?: 'Yes' | 'No' | '';
-  di?: string;
-  parametrization?: string;
-  draftNf?: string;
-  approvedDraftNf?: string;
-  nfNacionalization?: string;
-  status?: ImportStatus;
-  observation?: string;
-  containers: ContainerDetail[];
-  costs: Cost[];
+ id: string;
+ blAwb: string;
+ poSap?: string;
+ invoice?: string;
+ description?: string;
+ typeOfCargo?: string;
+ costCenter?: string;
+ qtyCarBattery?: number;
+ batchChina?: string;
+ color?: string;
+ exTariff?: string;
+ dg?: 'Yes' | 'No' | '';
+ uniqueDi?: 'Yes' | 'No' | '';
+ liNr?: string;
+ statusLi?: string;
+ underWater?: 'Yes' | 'No' | '';
+ technicianResponsibleChina?: string;
+ technicianResponsibleBrazil?: string;
+ shipmentType?: string;
+ cbm?: number;
+ fcl?: number;
+ lcl?: number;
+ typeContainer?: string;
+ incoterm?: string;
+ containerUnloaded?: number;
+ freightForwarderDestination?: string;
+ shipper?: string;
+ broker?: string;
+ shipowner?: string;
+ ieSentToBroker?: string;
+ freeTime?: number;
+ freeTimeDeadline?: string;
+ arrivalVessel?: string;
+ voyage?: string;
+ bondedWarehouse?: string;
+ actualEtd?: string;
+ actualEta?: string;
+ transitTime?: number;
+ storageDeadline?: string;
+ cargoPresenceDate?: string;
+ diRegistrationDate?: string;
+ greenChannelOrDeliveryAuthorizedDate?: string;
+ nfIssueDate?: string;
+ cargoReady?: string;
+ firstTruckDelivery?: string;
+ lastTruckDelivery?: string;
+ invoicePaymentDate?: string;
+ invoiceCurrency?: string;
+ invoiceValue?: number;
+ freightCurrency?: string;
+ freightValue?: number;
+ vlmd?: string;
+ taxRateCny?: number;
+ taxRateUsd?: number;
+ cifDi?: string;
+ nfValuePerContainer?: number;
+ typeOfInspection?: string;
+ qtyContainerInspection?: number;
+ additionalServices?: string;
+ importPlan?: string;
+ importLedger?: string;
+ draftDi?: string;
+ approvedDraftDi?: string;
+ ce?: string;
+ damageReport?: 'Yes' | 'No' | '';
+ di?: string;
+ parametrization?: string;
+ draftNf?: string;
+ approvedDraftNf?: string;
+ nfNacionalization?: string;
+ status?: ImportStatus;
+ observation?: string;
+ containers: ContainerDetail[];
+ costs: Cost[];
 }
 
 interface Claim {
@@ -411,12 +410,12 @@ const App = () => {
 
     // --- HANDLERS (lógica de navegação e ações) ---
     // ... (Seus handlers estão aqui, sem alterações)
-   
+    
     // CORRIGIDO: Função renderView com o typo corrigido
     const renderView = () => {
         const viewParts = currentView.split('/');
         const baseView = viewParts[0];
-       
+        
         switch (baseView) {
             case 'dashboard':
                 return (
@@ -452,10 +451,10 @@ const App = () => {
             case 'admin':
                 return <AdminPage user={loggedInUser!} onPasswordChange={handleChangePassword} />;
             default:
-                 return <DashboardPage imports={shipments} claims={claims} tasks={tasks} exchangeRates={exchangeRates} setExchangeRates={setExchangeRates} currentUser={loggedInUser} onNavigate={handleNavigate} />;
+                return <DashboardPage imports={shipments} claims={claims} tasks={tasks} exchangeRates={exchangeRates} setExchangeRates={setExchangeRates} currentUser={loggedInUser} onNavigate={handleNavigate} />;
         }
     };
-   
+    
     if (isLoading) {
         // ... (código sem alterações)
     }
@@ -463,7 +462,7 @@ const App = () => {
     if (!loggedInUser) {
         // ... (código sem alterações)
     }
-   
+    
     return (
         // ... (código sem alterações)
     );
@@ -477,3 +476,4 @@ const App = () => {
 const container = document.getElementById('root');
 const root = createRoot(container!);
 root.render(<App />);
+
