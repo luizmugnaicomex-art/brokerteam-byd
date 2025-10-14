@@ -585,8 +585,10 @@ const App = () => {
                 return <ImportListPage imports={shipments} onSelect={handleSelectShipment} onNew={handleNewShipment} onUpdate={updateShipment} onDelete={initiateDeleteShipment} onBulkImport={handleBulkImport} initialFilter={initialImportFilter} onClearInitialFilter={handleClearInitialFilter} />;
             case 'relatoriofup':
                 return <FUPReportPage shipments={shipments} />;
-            case 'logistics':
-                return <LogisticsPage shipments={shipments} setShipments={setShipments} />;
+// ...
+   case 'logistics':
+       return <LogisticsPage shipments={shipments} setShipments={setShipments} />;
+   // ...
             case '5w2hplan':
                 return <FiveW2HPage data={fiveW2HData} onSave={saveFiveW2H} onDelete={deleteFiveW2H} allImports={shipments} allUsers={users} />;
             case 'team':
