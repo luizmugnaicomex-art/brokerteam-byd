@@ -17,6 +17,7 @@ const firebaseConfig = {
 
 // Evita reinicialização do Firebase
 if (!firebase.apps.length) {
+    // CORRIGIDO: O 'i' deve ser minúsculo
     firebase.initializeApp(firebaseConfig);
 }
 const db = firebase.firestore();
@@ -273,6 +274,23 @@ const UserIcon = () => (<svg viewBox="0 0 24 24" fill="currentColor" className="
 
 
 // --- FUNÇÕES AUXILIARES ---
+// NOVO: Função para limpar valores 'undefined' antes de salvar no Firebase
+const sanitizeDataForFirebase = (data: any): any => {
+    if (Array.isArray(data)) {
+        return data.map(item => sanitizeDataForFirebase(item));
+    }
+    if (data !== null && typeof data === 'object') {
+        const sanitizedObject: { [key: string]: any } = {};
+        for (const key in data) {
+            if (data[key] !== undefined) {
+                sanitizedObject[key] = sanitizeDataForFirebase(data[key]);
+            }
+        }
+        return sanitizedObject;
+    }
+    return data;
+};
+
 const getStatusPillClass = (status: Shipment['status']) => {
     // ... (função sem alterações)
 };
@@ -282,7 +300,6 @@ const getStatusPillClass = (status: Shipment['status']) => {
 
 // --- COMPONENTES (Sidebar, BarChart, etc.) ---
 // ... (todos os seus componentes, como Sidebar, BarChart, etc., estão aqui, sem alterações)
-// ... (Incluindo a correção na LogisticsPage que fizemos antes)
 const LogisticsPage = ({ shipments, setShipments }: { shipments: Shipment[], setShipments: (shipments: Shipment[]) => void }) => {
     return (
         <div className="logistics-page">
@@ -308,7 +325,7 @@ const App = () => {
     const [users, setUsers] = useState<User[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     
-    // NOVO: Estado de segurança para garantir que o Firebase carregou antes de salvar
+    // Estado de segurança para garantir que o Firebase carregou antes de salvar
     const [isFirebaseLoaded, setIsFirebaseLoaded] = useState(false);
 
     // --- ESTADO DE AUTENTICAÇÃO ---
@@ -323,7 +340,7 @@ const App = () => {
     // --- ESTADO DO MODAL DE CONFIRMAÇÃO ---
     const [shipmentToDeleteId, setShipmentToDeleteId] = useState<string | null>(null);
 
-    // MODIFICADO: Efeito para carregar dados do Firebase na inicialização
+    // Efeito para carregar dados do Firebase na inicialização
     useEffect(() => {
         const unsubscribe = db.collection('navigator_erp').doc('live_data').onSnapshot((doc: any) => {
             if (doc.exists) {
@@ -355,17 +372,17 @@ const App = () => {
                 setFiveW2HData([]);
             }
             setIsLoading(false);
-            setIsFirebaseLoaded(true); // NOVO: Marca que o carregamento inicial foi concluído
+            setIsFirebaseLoaded(true); 
         }, (error: any) => {
             console.error("Erro ao ouvir o Firebase:", error);
             setIsLoading(false);
-            setIsFirebaseLoaded(true); // NOVO: Marca como concluído mesmo em caso de erro para não travar
+            setIsFirebaseLoaded(true); 
         });
 
         return () => unsubscribe();
     }, []);
 
-    // MODIFICADO: Efeito para salvar o estado no Firebase sempre que ele mudar
+    // Efeito para salvar o estado no Firebase sempre que ele mudar
     useEffect(() => {
         if (!isFirebaseLoaded) {
             return;
@@ -381,7 +398,8 @@ const App = () => {
         };
 
         const timer = setTimeout(() => {
-            const sanitizedData = sanitizeDataForFirebase(allData); // NOVO: Limpa os dados
+            // MODIFICADO: Limpa os dados antes de salvar
+            const sanitizedData = sanitizeDataForFirebase(allData); 
             console.log("Salvando estado no Firebase...", sanitizedData);
             db.collection('navigator_erp').doc('live_data').set(sanitizedData)
               .catch((error: any) => console.error("Erro ao salvar no Firebase:", error));
