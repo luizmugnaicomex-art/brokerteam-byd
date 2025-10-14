@@ -299,6 +299,14 @@ const getStatusPillClass = (status: Shipment['status']) => {
 
 
 // --- COMPONENTES ---
+const FUPReportPage = ({ shipments }: { shipments: Shipment[] }) => <div>FUP Report Page Placeholder</div>;
+const DashboardPage = (props: any) => <div>Dashboard Page Placeholder</div>;
+const ImportListPage = (props: any) => <div>Import List Page Placeholder</div>;
+const ImportFormPage = (props: any) => <div>Import Form Page Placeholder</div>;
+const ImportDetailPage = (props: any) => <div>Import Detail Page Placeholder</div>;
+const FiveW2HPage = (props: any) => <div>5W2H Page Placeholder</div>;
+const TeamPage = (props: any) => <div>Team Page Placeholder</div>;
+const AdminPage = (props: any) => <div>Admin Page Placeholder</div>;
 
 const LogisticsPage = ({ shipments, setShipments }: { shipments: Shipment[], setShipments: (shipments: Shipment[]) => void }) => {
     return (
@@ -311,7 +319,7 @@ const LogisticsPage = ({ shipments, setShipments }: { shipments: Shipment[], set
     );
 };
 
-// Define other components like DashboardPage, ImportListPage, etc. here...
+// ... (Restante dos seus componentes...)
 
 
 // --- COMPONENTE PRINCIPAL: App ---
@@ -384,8 +392,6 @@ const App = () => {
     useEffect(() => {
         // --- CORREÇÃO: Não salvar na carga inicial ---
         if (isInitialLoad.current) {
-            // Se ainda estiver carregando, não faça nada. Se o carregamento acabou,
-            // marque que a carga inicial foi concluída e permita salvamentos futuros.
             if (!isLoading) {
                 isInitialLoad.current = false;
             }
@@ -413,7 +419,6 @@ const App = () => {
     }, [shipments, users, claims, tasks, exchangeRates, fiveW2HData, isLoading]);
     
     // --- HANDLERS (lógica de navegação e ações) ---
-    // Adicione seus handlers aqui (handleLogin, handleLogout, addShipment, etc.)
     const handleLogin = (user: User) => {
       setLoggedInUser(user);
     }
@@ -446,7 +451,6 @@ const App = () => {
     };
     
     const handleBulkImport = (importedShipments: Shipment[]) => {
-        // Lógica para mesclar dados existentes com novos dados
         setShipments(prevShipments => {
             const existingIds = new Set(prevShipments.map(s => s.blAwb));
             const newShipments = importedShipments.filter(s => !existingIds.has(s.blAwb));
@@ -525,20 +529,45 @@ const App = () => {
     
     
     const renderView = () => {
-        // Placeholder for view rendering logic
-        // This should be replaced with your actual components
         const viewParts = currentView.split('/');
         const baseView = viewParts[0];
-
-        switch(baseView) {
+        
+        switch (baseView) {
             case 'dashboard':
-                return <div>Dashboard View</div>; // Placeholder
+                return (
+                    <DashboardPage 
+                        imports={shipments} 
+                        claims={claims} 
+                        tasks={tasks}
+                        exchangeRates={exchangeRates}
+                        setExchangeRates={setExchangeRates}
+                        currentUser={loggedInUser}
+                        onNavigate={handleNavigate}
+                    />
+                );
             case 'imports':
-                 return <div>Imports List View</div>; // Placeholder
+                if (viewParts[1] === 'new') return <ImportFormPage onSave={addShipment} onCancel={handleBackToList} />;
+                if (viewParts[1] === 'edit' && selectedShipmentId) {
+                    const imp = shipments.find(s => s.id === selectedShipmentId);
+                    return imp ? <ImportFormPage onSave={updateShipment} onCancel={handleBackToList} existingImport={imp} /> : <ImportListPage imports={shipments} onSelect={handleSelectShipment} onNew={handleNewShipment} onUpdate={updateShipment} onDelete={initiateDeleteShipment} onBulkImport={handleBulkImport} initialFilter={initialImportFilter} onClearInitialFilter={handleClearInitialFilter} />;
+                }
+                if (viewParts[1] === 'detail' && selectedShipmentId) {
+                    const imp = shipments.find(s => s.id === selectedShipmentId);
+                    return imp ? <ImportDetailPage importProcess={imp} onBack={handleBackToList} onEdit={() => handleEditShipment(selectedShipmentId)} /> : <ImportListPage imports={shipments} onSelect={handleSelectShipment} onNew={handleNewShipment} onUpdate={updateShipment} onDelete={initiateDeleteShipment} onBulkImport={handleBulkImport} initialFilter={initialImportFilter} onClearInitialFilter={handleClearInitialFilter} />;
+                }
+                return <ImportListPage imports={shipments} onSelect={handleSelectShipment} onNew={handleNewShipment} onUpdate={updateShipment} onDelete={initiateDeleteShipment} onBulkImport={handleBulkImport} initialFilter={initialImportFilter} onClearInitialFilter={handleClearInitialFilter} />;
+            case 'relatoriofup':
+                return <FUPReportPage shipments={shipments} />;
             case 'logistics':
                 return <LogisticsPage shipments={shipments} setShipments={setShipments} />;
+            case '5w2hplan':
+                return <FiveW2HPage data={fiveW2HData} onSave={saveFiveW2H} onDelete={deleteFiveW2H} allImports={shipments} allUsers={users} />;
+            case 'team':
+                return <TeamPage users={users} onSave={handleSaveUser} onDelete={handleDeleteUser} />;
+            case 'admin':
+                return <AdminPage user={loggedInUser!} onPasswordChange={handleChangePassword} />;
             default:
-                return <div>Dashboard View</div>; // Placeholder
+                return <DashboardPage imports={shipments} claims={claims} tasks={tasks} exchangeRates={exchangeRates} setExchangeRates={setExchangeRates} currentUser={loggedInUser} onNavigate={handleNavigate} />;
         }
     };
     
@@ -557,9 +586,13 @@ const App = () => {
                 <div className="sidebar-header">Navigator</div>
                 <nav>
                     <ul className="nav-links">
-                        <li><a href="#" className="nav-link active" onClick={() => setCurrentView('dashboard')}><DashboardIcon /><span className="nav-label">Dashboard</span></a></li>
-                        <li><a href="#" className="nav-link" onClick={() => setCurrentView('imports')}><ImportsIcon /><span className="nav-label">Imports</span></a></li>
-                         <li><a href="#" className="nav-link" onClick={() => setCurrentView('logistics')}><LogisticsIcon /><span className="nav-label">Logistics</span></a></li>
+                        <li><a href="#" className={`nav-link ${currentView.startsWith('dashboard') ? 'active' : ''}`} onClick={() => setCurrentView('dashboard')}><DashboardIcon /><span className="nav-label">Dashboard</span></a></li>
+                        <li><a href="#" className={`nav-link ${currentView.startsWith('imports') ? 'active' : ''}`} onClick={() => setCurrentView('imports')}><ImportsIcon /><span className="nav-label">Imports</span></a></li>
+                        <li><a href="#" className={`nav-link ${currentView.startsWith('relatoriofup') ? 'active' : ''}`} onClick={() => setCurrentView('relatoriofup')}><ReportIcon /><span className="nav-label">Relatório FUP</span></a></li>
+                        <li><a href="#" className={`nav-link ${currentView.startsWith('logistics') ? 'active' : ''}`} onClick={() => setCurrentView('logistics')}><LogisticsIcon /><span className="nav-label">Logistics</span></a></li>
+                        <li><a href="#" className={`nav-link ${currentView.startsWith('5w2hplan') ? 'active' : ''}`} onClick={() => setCurrentView('5w2hplan')}><FiveW2HIcon /><span className="nav-label">5W2H Plan</span></a></li>
+                        <li><a href="#" className={`nav-link ${currentView.startsWith('team') ? 'active' : ''}`} onClick={() => setCurrentView('team')}><TeamIcon /><span className="nav-label">Team</span></a></li>
+                         {loggedInUser?.role === 'Admin' && <li><a href="#" className={`nav-link ${currentView.startsWith('admin') ? 'active' : ''}`} onClick={() => setCurrentView('admin')}><AdminIcon /><span className="nav-label">Admin</span></a></li>}
                     </ul>
                 </nav>
                  <div className="sidebar-footer">
