@@ -321,6 +321,16 @@ const UserIcon = () => (<svg viewBox="0 0 24 24" fill="currentColor" className="
 
 // --- HELPER FUNCTIONS & CONFIG ---
 
+const removeUndefinedFields = (obj: any) => {
+  const newObj = { ...obj };
+  Object.keys(newObj).forEach(key => {
+    if (newObj[key] === undefined) {
+      delete newObj[key];
+    }
+  });
+  return newObj;
+};
+
 const getStatusPillClass = (status: Shipment['status']) => {
   const statusMap = {
     [ImportStatus.Delivered]: 'status-cargo-delivered',
@@ -3020,13 +3030,13 @@ const App = () => {
 
   // --- DATA ACTIONS ---
   const addShipment = (newShipmentData: Shipment) => {
-      firestore.collection('shipments').add(newShipmentData);
+      firestore.collection('shipments').add(removeUndefinedFields(newShipmentData));
       handleBackToList();
   };
 
   const updateShipment = (updatedShipment: Shipment) => {
       const { id, ...dataToUpdate } = updatedShipment;
-      firestore.collection('shipments').doc(id).update(dataToUpdate);
+      firestore.collection('shipments').doc(id).update(removeUndefinedFields(dataToUpdate));
       handleBackToList();
   };
 
@@ -3068,10 +3078,10 @@ const App = () => {
                 if (existingDocId) {
                     const docRef = shipmentsRef.doc(existingDocId);
                     // Overwrite the document with new data, as per original logic
-                    batch.set(docRef, incomingShipment);
+                    batch.set(docRef, removeUndefinedFields(incomingShipment));
                 } else {
                     const docRef = shipmentsRef.doc();
-                    batch.set(docRef, incomingShipment);
+                    batch.set(docRef, removeUndefinedFields(incomingShipment));
                 }
             });
     
