@@ -1,7 +1,9 @@
 import React, { useState, useMemo, useCallback, useEffect, useRef, useLayoutEffect } from 'react';
 import { createRoot } from 'react-dom/client';
+import { auth, firestore, FieldValue, firebaseConfig } from './firebase';
 
 declare var XLSX: any;
+declare var firebase: any;
 
 // --- ENHANCED TYPE DEFINITIONS ---
 
@@ -174,10 +176,10 @@ interface Task {
 type UserRole = 'Admin' | 'COMEX' | 'Broker' | 'Logistics' | 'Finance';
 
 interface User {
-    id: string;
+    id: string; // Corresponds to Firebase Auth UID
     name: string;
-    username: string;
-    password?: string; // Optional when sending to client
+    username: string; // This is the user's email
+    password?: string; // Only used for new user creation form, NOT stored in Firestore
     role: UserRole;
 }
 
@@ -268,68 +270,12 @@ interface FiveW2H {
 }
 
 
-// --- MOCK DATA ---
-const mockExchangeRates: ExchangeRates = {
-    date: '2024-07-30', time: '10:00',
-    usd: { compra: 5.15, venda: 5.25 },
-    eur: { compra: 5.50, venda: 5.60 },
-    cny: 0.72
-};
-
-const mockShipments: Shipment[] = [];
-
-const mockClaims: Claim[] = [];
-const mockTasks: Task[] = [];
-
-
-const mockProcessTrackingData: ProcessTrackingEntry[] = [];
-
-const mockWarehouses: Warehouse[] = [
-    { name: 'Intermarítima', capacity: 100, currentUsage: 60 },
-    { name: 'TPC', capacity: 120, currentUsage: 90 },
-    { name: 'BYD Patio', capacity: 80, currentUsage: 75 },
-];
-
-const mockContainers: Container[] = [];
-
-const today = new Date().toISOString().split('T')[0];
-const mockBookings: Booking[] = [];
-
-const mockBrokerNumerarioData: BrokerNumerarioEntry[] = [];
-
-const mockUsers: User[] = [
-    // ADM
-    { id: 'user-1', name: 'Luiz Vieira da Costa Neto', username: 'ADMIN', password: 'Byd@N1', role: 'Admin' },
-    // ADM LOG
-    { id: 'user-2', name: 'Emanoela Cardoso de O. Pereira Amorim', username: 'emanoelacardoso', password: 'Byd@N1', role: 'Logistics' },
-    // BROKER
-    { id: 'user-3', name: 'Andressa Pinto Silva Barros', username: 'andressapinto', password: 'Byd@N1', role: 'Broker' },
-    { id: 'user-4', name: 'Beatriz Regina Rinaldo', username: 'beatrizrinaldo', password: 'Byd@N1', role: 'Broker' },
-    { id: 'user-5', name: 'Daniela Guimarães Brito', username: 'danielaguimaraes', password: 'Byd@N1', role: 'Broker' },
-    { id: 'user-6', name: 'Marina Barbosa de Quadros', username: 'marinabarbosa', password: 'Byd@N1', role: 'Broker' },
-    { id: 'user-7', name: 'Israel Moreira de Oliveira Junior', username: 'israelmoreira', password: 'Byd@N1', role: 'Broker' },
-    // GESTAO (mapped to COMEX)
-    { id: 'user-8', name: 'Caio Blanco Carreira', username: 'caioblanco', password: 'Byd@N1', role: 'COMEX' },
-    { id: 'user-9', name: 'Giani Oriente Oliveira', username: 'gianioriente', password: 'Byd@N1', role: 'COMEX' },
-    { id: 'user-10', name: 'Italo de Araújo Wanderley Romeiro', username: 'italoaraujo', password: 'Byd@N1', role: 'COMEX' },
-    { id: 'user-11', name: 'Taine de Melo Carneiro Oliveira', username: 'tainedemelo', password: 'Byd@N1', role: 'COMEX' },
-    // LOGISTICA
-    { id: 'user-12', name: 'Fabio Levi da Cruz Silva', username: 'fabiolevi', password: 'Byd@N1', role: 'Logistics' },
-    { id: 'user-13', name: 'Rebeca Magalhães Just da Rocha Pita', username: 'rebecamagalhaes', password: 'Byd@N1', role: 'Logistics' },
-    { id: 'user-14', name: 'Cindy Mileni Álvares Nascimento', username: 'cindymileni', password: 'Byd@N1', role: 'Logistics' },
-    { id: 'user-15', name: 'Bruno Borges Coelho', username: 'brunoborges', password: 'Byd@N1', role: 'Logistics' },
-];
-
-
-const mockFiveW2HData: FiveW2H[] = [];
-
-
 // --- ICONS ---
 const DashboardIcon = () => (<svg className="nav-icon" viewBox="0 0 24 24"><path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"></path></svg>);
 const ImportsIcon = () => (<svg className="nav-icon" viewBox="0 0 24 24"><path d="M20 18v-2h-3v2h3zm-3-4h3v-2h-3v2zm3-4h-3v2h3V6zm-5 2h2v2h-2V8zm-8 4h3v-2H7v2zm3-4H7v2h3V8zm0-4H7v2h3V4zm10 8h-3v2h3v-2zm-3-4h3V8h-3v2zM5 22h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2zM5 4h14v16H5V4z"></path></svg>);
 const LogisticsIcon = () => (<svg className="nav-icon" viewBox="0 0 24 24"><path d="M20 8h-3V4H3c-1.1 0-2 .9-2 2v11h2c0 1.66 1.34 3 3 3s3-1.34 3-3h6c0 1.66 1.34 3 3 3s3-1.34 3-3h2v-5l-3-4zM6 18c-.55 0-1-.45-1-1s.45-1 1-1 1 .45 1 1-.45 1-1 1zm13.5-8.5 1.96 2.5H17V9.5h2.5zM18 18c-.55 0-1-.45-1-1s.45-1 1-1 1 .45 1 1-.45 1-1 1z"></path></svg>);
 const TeamIcon = () => (<svg className="nav-icon" viewBox="0 0 24 24"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"></path></svg>);
-const AdminIcon = () => (<svg className="nav-icon" viewBox="0 0 24 24"><path d="M19.43 12.98c.04-.32.07-.64.07-.98s-.03-.66-.07-.98l2.11-1.65c.19-.15.24-.42.12-.64l-2-3.46c-.12-.22-.39-.3-.61-.22l-2.49 1c-.52-.4-1.08-.73-1.69-.98l-.38-2.65C14.46 2.18 14.25 2 14 2h-4c-.25 0-.46.18-.49.42l-.38 2.65c-.61.25-1.17.59-1.69.98l-2.49-1c-.23-.09-.49 0-.61.22l-2 3.46c-.13.22-.07.49.12.64l2.11 1.65c-.04.32-.07.65-.07.98s.03.66.07.98l-2.11 1.65c-.19.15-.24.42-.12.64l2 3.46c.12.22.39.3.61.22l2.49 1c.52.4 1.08.73 1.69.98l.38 2.65c.03.24.24.42.49.42h4c.25 0 .46-.18.49.42l.38-2.65c.61-.25 1.17-.59-1.69.98l2.49 1c.23.09.49 0-.61.22l2-3.46c.12-.22.07-.49-.12.64l-2.22-1.65zM12 15.5c-1.93 0-3.5-1.57-3.5-3.5s1.57-3.5 3.5-3.5 3.5 1.57 3.5 3.5-1.57 3.5-3.5 3.5z"></path></svg>);
+const AdminIcon = () => (<svg className="nav-icon" viewBox="0 0 24 24"><path d="M19.43 12.98c.04-.32.07-.64.07-.98s-.03-.66-.07-.98l2.11-1.65c.19-.15.24-.42.12-.64l-2-3.46c-.12-.22-.39-.3-.61-.22l-2.49 1c-.52-.4-1.08-.73-1.69-.98l-.38-2.65C14.46 2.18 14.25 2 14 2h-4c-.25 0-.46.18-.49.42l-.38 2.65c-.61.25-1.17.59-1.69-.98l-2.49-1c-.23-.09-.49 0-.61.22l-2 3.46c-.13.22-.07.49.12.64l2.11 1.65c-.04.32-.07.65-.07.98s.03.66.07.98l-2.11 1.65c-.19.15-.24.42-.12.64l2 3.46c.12.22.39.3.61.22l2.49-1c.52.4 1.08.73 1.69.98l.38 2.65c.03.24.24.42.49.42h4c.25 0 .46-.18.49.42l.38-2.65c.61.25 1.17.59 1.69.98l2.49-1c.23.09.49 0 .61-.22l2-3.46c.12-.22.07-.49-.12-.64l-2.11-1.65zM12 15.5c-1.93 0-3.5-1.57-3.5-3.5s1.57-3.5 3.5-3.5 3.5 1.57 3.5 3.5-1.57 3.5-3.5 3.5z"></path></svg>);
 const FiveW2HIcon = () => (<svg className="nav-icon" viewBox="0 0 24 24"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm-2 14h-2v-2h2v2zm0-4h-2V9h2v3zm-1-5c-.55 0-1-.45-1-1V3.5L18.5 9H13z"></path></svg>);
 const BackIcon = () => (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>);
 const UploadIcon = () => (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className="upload-icon"><path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>);
@@ -368,7 +314,7 @@ const AlertCircleIcon = () => <svg viewBox="0 0 24 24" fill="none" stroke="curre
 const Loader2Icon = () => <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="animate-spin"><path d="M21 12a9 9 0 1 1-6.219-8.56"></path></svg>;
 const InfoIcon = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="log-icon"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>;
 const SearchIcon = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="log-icon"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>;
-const WandIcon = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="header-icon"><path d="M15 4V2m0 14v-2m-7.5-1.5L6 13m0 0L4.5 14.5M20 9.5h2M2 9.5h2M19.5 14.5L21 13m0 0l-1.5-1.5M4.5 4.5L6 6m0 0l1.5 1.5M12 12l1-1 2 2-1 1-2-2zm-2 2l-1 1-2-2 1-1 2 2z"></path></svg>;
+const WandIcon = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="header-icon"><path d="M15 4V2m0 14v-2m-7.5-1.5L6 13m0 0L4.5 14.5M20 9.5h2M2 9.5h2M19.5 14.5L21 13m0 0l-1.5-1.5M12 12l1-1 2 2-1 1-2-2zm-2 2l-1 1-2-2 1-1 2 2z"></path></svg>;
 const UserIcon = () => (<svg viewBox="0 0 24 24" fill="currentColor" className="nav-icon"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"></path></svg>);
 
 
@@ -1161,9 +1107,8 @@ const DashboardPage = ({
                 </div>
             </div>
             
-            {/* FIX: Commented out undefined components to resolve compilation errors. */}
-            {/* <ModelPerformanceSection shipments={imports} /> */}
-            {/* <ABCAnalysisSection shipments={imports} exchangeRates={exchangeRates} /> */}
+             {/* <ModelPerformanceSection shipments={imports} /> */}
+             {/* <ABCAnalysisSection shipments={imports} exchangeRates={exchangeRates} /> */}
 
 
             {isRatesModalOpen && (
@@ -1632,8 +1577,8 @@ const ImportListPage = ({ imports, onSelect, onNew, onUpdate, onDelete, onBulkIm
 };
 
 const ImportFormPage = ({ onSave, onCancel, existingImport }: { onSave: (shipment: Shipment) => void, onCancel: () => void, existingImport?: Shipment }) => {
-    const [shipment, setShipment] = useState<Shipment>(existingImport || {
-        id: '', blAwb: 'TBC', status: ImportStatus.OrderPlaced, containers: [], costs: []
+    const [shipment, setShipment] = useState<Partial<Shipment>>(existingImport || {
+        blAwb: '', status: ImportStatus.OrderPlaced, containers: [], costs: []
     });
 
     useEffect(() => {
@@ -1701,7 +1646,7 @@ const ImportFormPage = ({ onSave, onCancel, existingImport }: { onSave: (shipmen
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        onSave(shipment);
+        onSave(shipment as Shipment);
     };
 
     return (
@@ -1843,7 +1788,7 @@ const ImportDetailPage = ({ importProcess, onBack, onEdit }: { importProcess: Sh
     const DetailItem = ({ label, value }: {label: string, value: any}) => (
         <div className="detail-item">
             <span className="detail-label">{label}</span>
-            <span className="detail-value">{value === undefined || value === null || value === '' ? 'N/A' : String(value)}</span>
+            <span className="detail-value">{value === undefined || value === null || value === '' ? 'N/A' : value}</span>
         </div>
     );
     
@@ -2093,59 +2038,55 @@ const VesselUpdateService = ({ shipments, setShipments }: { shipments: Shipment[
             const scrapedData = await mockFetchShipSchedule();
             setUpdateLog(prev => [...prev, `Successfully fetched data for ${scrapedData.length} vessels.`]);
 
+            const batch = firestore.batch();
             let updatedShipmentsCount = 0;
-            const newShipments = [...shipments];
+            const foundVesselsInScrape = new Set(scrapedData.map(d => d.ship_name?.trim().toUpperCase()).filter(Boolean));
 
-            const validScrapedVessels = scrapedData.filter(d => {
-                if (typeof d.ship_name === 'string' && d.ship_name.trim() !== '') {
-                    return true;
+            for (const scrapedVessel of scrapedData) {
+                const vesselNameUpper = scrapedVessel.ship_name?.trim().toUpperCase();
+                if (!vesselNameUpper) {
+                    setUpdateLog(prev => [...prev, `[WARNING] A vessel with a missing name was found and skipped.`]);
+                    continue;
                 }
-                setUpdateLog(prev => [...prev, `[WARNING] A vessel with an invalid or missing name was found in the fetched schedule and will be skipped.`]);
-                return false;
-            });
 
-            const foundVesselsInScrape = new Set(validScrapedVessels.map(d => d.ship_name.trim().toUpperCase()));
+                const matchingShipments = shipments.filter(s => s.arrivalVessel?.trim().toUpperCase() === vesselNameUpper);
 
-            validScrapedVessels.forEach(scrapedVessel => {
-                const vesselNameUpper = scrapedVessel.ship_name.trim().toUpperCase();
-                
-                const matchingShipmentsIndices = newShipments
-                    .map((shipment, index) => ({ shipment, index }))
-                    .filter(item => typeof item.shipment.arrivalVessel === 'string' && item.shipment.arrivalVessel.trim().toUpperCase() === vesselNameUpper);
-
-                if (matchingShipmentsIndices.length > 0) {
-                     matchingShipmentsIndices.forEach(({ shipment: original, index: shipmentIndex }) => {
+                if (matchingShipments.length > 0) {
+                    for (const original of matchingShipments) {
                         const updatedFields: Partial<Shipment> = {};
                         let hasUpdate = false;
 
                         const newEta = scrapedVessel.eta;
                         const newEtd = scrapedVessel.etd;
 
-                        if (newEta !== original.actualEta) {
+                        if (newEta && newEta !== original.actualEta) {
                             updatedFields.actualEta = newEta;
                             hasUpdate = true;
                         }
-                        if (newEtd !== original.actualEtd) {
+                        if (newEtd && newEtd !== original.actualEtd) {
                             updatedFields.actualEtd = newEtd;
                             hasUpdate = true;
                         }
-                        
+
                         if (hasUpdate) {
-                            newShipments[shipmentIndex] = { ...original, ...updatedFields };
+                            const docRef = firestore.collection('shipments').doc(original.id);
+                            batch.update(docRef, updatedFields);
                             updatedShipmentsCount++;
-                            setUpdateLog(prev => [...prev, `[SUCCESS] Vessel '${original.arrivalVessel}' (BL: ${original.blAwb}) updated.`]);
+                            setUpdateLog(prev => [...prev, `[SUCCESS] Vessel '${original.arrivalVessel}' (BL: ${original.blAwb}) will be updated.`]);
                         } else {
-                            setUpdateLog(prev => [...prev, `[INFO] Vessel '${original.arrivalVessel}' (BL: ${original.blAwb}): Dates are already synchronized.`]);
+                             setUpdateLog(prev => [...prev, `[INFO] Vessel '${original.arrivalVessel}' (BL: ${original.blAwb}): Dates are already synchronized.`]);
                         }
-                    });
+                    }
                 } else {
-                    setUpdateLog(prev => [...prev, `[INFO] New vessel found in schedule: '${scrapedVessel.ship_name}'. Consider adding it to your imports.`]);
+                     setUpdateLog(prev => [...prev, `[INFO] New vessel found in schedule: '${scrapedVessel.ship_name}'. Consider adding it to your imports.`]);
                 }
-            });
+            }
+
+            await batch.commit();
 
             shipments.forEach(ship => {
-                if (typeof ship.arrivalVessel !== 'string' || !ship.arrivalVessel.trim()) {
-                    setUpdateLog(prev => [...prev, `[WARNING] Shipment with BL '${ship.blAwb}' has a missing vessel name and was skipped during the check.`]);
+                if (!ship.arrivalVessel?.trim()) {
+                    setUpdateLog(prev => [...prev, `[WARNING] Shipment with BL '${ship.blAwb}' has a missing vessel name and was skipped.`]);
                     return;
                 }
                 if (!foundVesselsInScrape.has(ship.arrivalVessel.trim().toUpperCase())) {
@@ -2153,13 +2094,12 @@ const VesselUpdateService = ({ shipments, setShipments }: { shipments: Shipment[
                 }
             });
             
-            setShipments(newShipments);
-            setUpdateLog(prev => [...prev, `\nUpdate complete. ${updatedShipmentsCount} shipment(s) updated.`]);
+            setUpdateLog(prev => [...prev, `\nUpdate complete. ${updatedShipmentsCount} shipment(s) updated in the database.`]);
 
         } catch (error) {
-            console.error("Failed to fetch vessel data:", error);
+            console.error("Failed to fetch or update vessel data:", error);
             const errorMessage = error instanceof Error ? error.message : "An unknown error occurred.";
-            setUpdateLog(prev => [...prev, `[ERROR] Failed to fetch or process vessel data: ${errorMessage}. Please try again later.`]);
+            setUpdateLog(prev => [...prev, `[ERROR] Failed to process updates: ${errorMessage}. Please try again later.`]);
         } finally {
             setIsLoading(false);
         }
@@ -2207,8 +2147,8 @@ const LogisticsPage = ({ shipments, setShipments }: { shipments: Shipment[], set
 };
 
 const FiveW2HFormModal = ({ item, onSave, onCancel, allImports, allUsers }: { item?: FiveW2H, onSave: (item: FiveW2H) => void, onCancel: () => void, allImports: Shipment[], allUsers: User[] }) => {
-    const [formData, setFormData] = useState<FiveW2H>(item || {
-        id: '', what: '', why: '', who: '', where: '', when: '', how: '', howMuch: 0, currency: 'BRL', status: FiveW2HStatus.Open
+    const [formData, setFormData] = useState<Partial<FiveW2H>>(item || {
+        what: '', why: '', who: '', where: '', when: '', how: '', howMuch: 0, currency: 'BRL', status: FiveW2HStatus.Open
     });
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
@@ -2236,7 +2176,7 @@ const FiveW2HFormModal = ({ item, onSave, onCancel, allImports, allUsers }: { it
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        onSave(formData);
+        onSave(formData as FiveW2H);
     };
 
     return (
@@ -2414,13 +2354,13 @@ const FiveW2HPage = ({ data, onSave, onDelete, allImports, allUsers }: { data: F
 };
 
 
-const AdminPage = ({ user, onPasswordChange }: { user: User, onPasswordChange: (pass: string) => void }) => {
+const AdminPage = ({ user, onPasswordChange }: { user: User, onPasswordChange: (pass: string) => Promise<void> }) => {
     const [password, setPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setError('');
         setSuccess('');
@@ -2438,10 +2378,14 @@ const AdminPage = ({ user, onPasswordChange }: { user: User, onPasswordChange: (
             return;
         }
 
-        onPasswordChange(password);
-        setSuccess('Password changed successfully!');
-        setPassword('');
-        setConfirmPassword('');
+        try {
+            await onPasswordChange(password);
+            setSuccess('Password changed successfully!');
+            setPassword('');
+            setConfirmPassword('');
+        } catch (err: any) {
+            setError(err.message || 'Failed to change password.');
+        }
     };
 
     return (
@@ -2501,10 +2445,10 @@ const LoginScreen = ({ onLogin, error }: { onLogin: (username: string, pass: str
                 <p className="login-subtitle">Please enter your credentials to continue</p>
                 <form onSubmit={handleSubmit}>
                      <div className="form-group">
-                        <label htmlFor="username">Username</label>
+                        <label htmlFor="username">Username (Email)</label>
                         <input
                             id="username"
-                            type="text"
+                            type="email"
                             value={username}
                             onChange={(e) => setUsername(e.target.value)}
                             autoFocus
@@ -2530,8 +2474,8 @@ const LoginScreen = ({ onLogin, error }: { onLogin: (username: string, pass: str
 };
 
 const UserFormModal = ({ user, onSave, onCancel }: { user?: User, onSave: (user: User) => void, onCancel: () => void }) => {
-    const [formData, setFormData] = useState<User>(user || { id: '', name: '', username: '', role: 'Broker', password: '' });
-    const [confirmPassword, setConfirmPassword] = useState('');
+    const [formData, setFormData] = useState<User>(user || { id: '', name: '', username: '', role: 'Broker', password: 'Byd@N1' });
+    const [confirmPassword, setConfirmPassword] = useState(user ? '' : 'Byd@N1');
     const [error, setError] = useState('');
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
@@ -2543,12 +2487,12 @@ const UserFormModal = ({ user, onSave, onCancel }: { user?: User, onSave: (user:
         e.preventDefault();
         setError('');
 
-        if (formData.password !== confirmPassword) {
+        if (!user && formData.password !== confirmPassword) {
             setError('Passwords do not match.');
             return;
         }
 
-        if (!formData.id && !formData.password) {
+        if (!user && !formData.password) {
             setError('Password is required for new users.');
             return;
         }
@@ -2573,8 +2517,8 @@ const UserFormModal = ({ user, onSave, onCancel }: { user?: User, onSave: (user:
                             <input type="text" id="name" name="name" value={formData.name} onChange={handleChange} required />
                         </div>
                         <div className="form-group">
-                            <label htmlFor="username">Username</label>
-                            <input type="text" id="username" name="username" value={formData.username} onChange={handleChange} required readOnly={!!user} />
+                            <label htmlFor="username">Username (Email)</label>
+                            <input type="email" id="username" name="username" value={formData.username} onChange={handleChange} required readOnly={!!user} />
                         </div>
                         <div className="form-group">
                             <label htmlFor="role">Role</label>
@@ -2582,14 +2526,18 @@ const UserFormModal = ({ user, onSave, onCancel }: { user?: User, onSave: (user:
                                 {roles.map(r => <option key={r} value={r}>{r}</option>)}
                             </select>
                         </div>
-                         <div className="form-group">
-                            <label htmlFor="password">{user ? 'New Password' : 'Password'}</label>
-                            <input type="password" id="password" name="password" value={formData.password} onChange={handleChange} placeholder={user ? 'Leave blank to keep current' : ''} />
-                        </div>
-                        <div className="form-group">
-                            <label htmlFor="confirmPassword">Confirm Password</label>
-                            <input type="password" id="confirmPassword" name="confirmPassword" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} />
-                        </div>
+                        {!user && (
+                            <>
+                                <div className="form-group">
+                                    <label htmlFor="password">Password</label>
+                                    <input type="password" id="password" name="password" value={formData.password} onChange={handleChange} required />
+                                </div>
+                                <div className="form-group">
+                                    <label htmlFor="confirmPassword">Confirm Password</label>
+                                    <input type="password" id="confirmPassword" name="confirmPassword" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} required/>
+                                </div>
+                            </>
+                        )}
                     </div>
                     <div className="modal-actions-footer">
                         <button type="button" onClick={onCancel} className="btn-discard">Cancel</button>
@@ -2602,7 +2550,7 @@ const UserFormModal = ({ user, onSave, onCancel }: { user?: User, onSave: (user:
 };
 
 
-const TeamPage = ({ users, onSave, onDelete }: { users: User[], onSave: (user: User) => void, onDelete: (id: string) => void }) => {
+const TeamPage = ({ users, onSave, onDelete, currentUser }: { users: User[], onSave: (user: User) => void, onDelete: (id: string) => void, currentUser: User | null }) => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingUser, setEditingUser] = useState<User | undefined>(undefined);
 
@@ -2636,6 +2584,7 @@ const TeamPage = ({ users, onSave, onDelete }: { users: User[], onSave: (user: U
                         <thead>
                             <tr>
                                 <th>Name</th>
+                                <th>Username (Email)</th>
                                 <th>Role</th>
                                 <th>Actions</th>
                             </tr>
@@ -2644,10 +2593,18 @@ const TeamPage = ({ users, onSave, onDelete }: { users: User[], onSave: (user: U
                             {users.map(user => (
                                 <tr key={user.id}>
                                     <td>{user.name}</td>
+                                    <td>{user.username}</td>
                                     <td>{user.role}</td>
                                     <td className="actions-cell">
                                         <button className="action-btn edit-btn" onClick={() => handleEdit(user)}><EditIcon /></button>
-                                        <button className="action-btn delete-btn" onClick={() => onDelete(user.id)}><TrashIcon /></button>
+                                        <button 
+                                            className="action-btn delete-btn" 
+                                            onClick={() => onDelete(user.id)}
+                                            disabled={currentUser?.id === user.id}
+                                            title={currentUser?.id === user.id ? "You cannot delete your own account" : `Delete user ${user.name}`}
+                                        >
+                                            <TrashIcon />
+                                        </button>
                                     </td>
                                 </tr>
                             ))}
@@ -2665,27 +2622,6 @@ const TeamPage = ({ users, onSave, onDelete }: { users: User[], onSave: (user: U
         </div>
     );
 };
-
-type AccordionItemProps = {
-    title: string;
-    isOpen: boolean;
-    onToggle: () => void;
-    children: React.ReactNode;
-};
-// FIX: Changed component to use React.FC to correctly type it as a functional component, resolving a 'key' prop error.
-const AccordionItem: React.FC<AccordionItemProps> = ({ title, children, isOpen, onToggle }) => (
-    <div className="accordion-item">
-        <button className="accordion-header" onClick={onToggle} aria-expanded={isOpen}>
-            <span className="accordion-title">{title}</span>
-            <span className={`accordion-icon ${isOpen ? 'open' : ''}`}><ChevronDownIcon /></span>
-        </button>
-        <div className={`accordion-content ${isOpen ? 'open' : ''}`}>
-            <div className="accordion-content-inner">
-                {children}
-            </div>
-        </div>
-    </div>
-);
 
 const UploadModal = ({ onCancel, onImport, parser, title }: { onCancel: () => void, onImport: (data: any[]) => void, parser: (data: any[]) => { data: any[], error: string | null }, title: string }) => {
     const [dragOver, setDragOver] = useState(false);
@@ -2892,20 +2828,51 @@ const ConfirmationModal = ({ title, message, onConfirm, onCancel, confirmText = 
     );
 };
 
+const ConnectionErrorScreen = ({ errorMessage }: { errorMessage: string }) => (
+    <div className="connection-error-screen">
+        <div className="login-box animate-scale-in">
+            <div className="login-header">
+                <h1>Configuration Error</h1>
+            </div>
+            <p className="login-subtitle" style={{ textAlign: 'left', maxWidth: 'none' }}>
+                The application cannot connect to the database. This is usually because the Firebase configuration is incorrect.
+            </p>
+            <div className="error-banner" style={{marginBottom: '1.5rem'}}>
+                <AlertCircleIcon />
+                <div>{errorMessage}</div>
+            </div>
+            <div className="config-instructions">
+                <p><strong>How to Fix:</strong></p>
+                <ol>
+                    <li>Go to the <a href="https://console.firebase.google.com/" target="_blank" rel="noopener noreferrer">Firebase Console</a> and select your project.</li>
+                    <li>In your Project Settings (click the gear icon), scroll down to "Your apps".</li>
+                    <li>Find your web app and select the "Config" option to view your credentials.</li>
+                    <li>Open the <code>firebase.tsx</code> file in your project code.</li>
+                    <li>Carefully copy and paste the values from the Firebase Console into the corresponding fields in <code>firebase.tsx</code>.</li>
+                    <li>Save the file and reload this page.</li>
+                </ol>
+            </div>
+        </div>
+    </div>
+);
+
 
 // --- App Component ---
 const App = () => {
+  const [firebaseConfigError, setFirebaseConfigError] = useState<string | null>(null);
+
   // --- STATE MANAGEMENT ---
-  const [shipments, setShipments] = useState<Shipment[]>(mockShipments);
-  const [claims, setClaims] = useState<Claim[]>(mockClaims);
-  const [tasks, setTasks] = useState<Task[]>(mockTasks);
-  const [exchangeRates, setExchangeRates] = useState<ExchangeRates | null>(mockExchangeRates);
-  const [fiveW2HData, setFiveW2HData] = useState<FiveW2H[]>(mockFiveW2HData);
-  const [users, setUsers] = useState<User[]>(mockUsers);
+  const [shipments, setShipments] = useState<Shipment[]>([]);
+  const [claims, setClaims] = useState<Claim[]>([]);
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [exchangeRates, setExchangeRates] = useState<ExchangeRates | null>(null);
+  const [fiveW2HData, setFiveW2HData] = useState<FiveW2H[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
   
   // --- AUTHENTICATION STATE ---
   const [loggedInUser, setLoggedInUser] = useState<User | null>(null);
   const [loginError, setLoginError] = useState('');
+  const [authLoading, setAuthLoading] = useState(true);
   
   // --- NAVIGATION STATE ---
   const [currentView, setCurrentView] = useState('dashboard');
@@ -2916,19 +2883,102 @@ const App = () => {
   const [shipmentToDeleteId, setShipmentToDeleteId] = useState<string | null>(null);
 
 
+  // --- Firebase Initial Setup and Health Check ---
+    useEffect(() => {
+        const initializeApp = async () => {
+            // 1. Check for placeholder values first.
+            if (firebaseConfig.apiKey.startsWith("YOUR_") || firebaseConfig.projectId.startsWith("YOUR_")) {
+                setFirebaseConfigError("The Firebase configuration in `firebase.tsx` is using placeholder values. Please replace them with your actual project credentials.");
+                setAuthLoading(false);
+                return;
+            }
+
+            // 2. Attempt to seed the admin user. This acts as a health check for the configuration.
+            try {
+                const adminEmail = 'admin@byd.com';
+                const adminPassword = 'Byd@N1';
+                const usersRef = firestore.collection('users');
+                const q = usersRef.where('username', '==', adminEmail);
+                const querySnapshot = await q.get();
+
+                if (querySnapshot.empty) {
+                    console.log('Admin user document not found. Attempting to create to verify config...');
+                    const userCredential = await auth.createUserWithEmailAndPassword(adminEmail, adminPassword);
+                    const newUser = userCredential.user;
+                    if (newUser) {
+                        await usersRef.doc(newUser.uid).set({
+                            name: 'ADMIN',
+                            username: adminEmail,
+                            role: 'Admin',
+                        });
+                        console.log('Successfully created ADMIN user.');
+                        await auth.signOut(); // Sign out to show login screen after setup.
+                    }
+                }
+            } catch (error: any) {
+                console.error('Error during initial setup (admin user creation):', error);
+                if (error.message && (error.message.includes('CONFIGURATION_NOT_FOUND') || error.message.includes('invalid-api-key'))) {
+                     setFirebaseConfigError(`Firebase Error: ${error.message}. This usually means the configuration values in firebase.tsx are incorrect. Please double-check them against your Firebase project settings.`);
+                } else if (error.code === 'auth/email-already-in-use') {
+                    console.log('Admin user already exists in Auth. Setup check passed.');
+                } else {
+                    setFirebaseConfigError(`An unexpected error occurred during initial setup: ${error.message}. Please check the console and your Firebase configuration.`);
+                }
+                setAuthLoading(false);
+                return; // Stop initialization on config error
+            }
+
+            // 3. If setup is successful, attach all listeners.
+            const unsubscribeAuth = auth.onAuthStateChanged(async (userAuth: any) => {
+                if (userAuth) {
+                    const userDoc = await firestore.collection('users').doc(userAuth.uid).get();
+                    if (userDoc.exists) {
+                        setLoggedInUser({ id: userDoc.id, ...userDoc.data() } as User);
+                    } else {
+                        console.error("User document not found for UID:", userAuth.uid);
+                        auth.signOut();
+                    }
+                } else {
+                    setLoggedInUser(null);
+                }
+                setAuthLoading(false);
+            });
+
+            const unsubscribeShipments = firestore.collection('shipments').onSnapshot(snapshot => setShipments(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Shipment[]));
+            const unsubscribeUsers = firestore.collection('users').onSnapshot(snapshot => setUsers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as User[]));
+            const unsubscribe5W2H = firestore.collection('fiveW2H').onSnapshot(snapshot => setFiveW2HData(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as FiveW2H[]));
+            const unsubscribeRates = firestore.collection('config').doc('exchangeRates').onSnapshot(doc => {
+                if (doc.exists) setExchangeRates(doc.data() as ExchangeRates);
+            });
+
+            return () => {
+                unsubscribeAuth();
+                unsubscribeShipments();
+                unsubscribeUsers();
+                unsubscribe5W2H();
+                unsubscribeRates();
+            };
+        };
+
+        initializeApp();
+    }, []);
+
+    if (firebaseConfigError) {
+        return <ConnectionErrorScreen errorMessage={firebaseConfigError} />;
+    }
+
   // --- HANDLERS ---
-  const handleLogin = (username: string, pass: string) => {
-    const user = users.find(u => u.username.toLowerCase() === username.toLowerCase() && u.password === pass);
-    if (user) {
-      setLoggedInUser(user);
-      setLoginError('');
-    } else {
-      setLoginError('Incorrect username or password. Please try again.');
+  const handleLogin = async (email: string, pass: string) => {
+    setLoginError('');
+    try {
+        await auth.signInWithEmailAndPassword(email, pass);
+    } catch (error: any) {
+        setLoginError(error.message);
     }
   };
 
   const handleLogout = () => {
-    setLoggedInUser(null);
+    auth.signOut();
     setCurrentView('dashboard');
   };
   
@@ -2969,17 +3019,13 @@ const App = () => {
 
   // --- DATA ACTIONS ---
   const addShipment = (newShipmentData: Shipment) => {
-      const newShipment = { 
-          ...newShipmentData, 
-          id: uuidv4(),
-          blAwb: newShipmentData.blAwb || 'TBC'
-      };
-      setShipments(prev => [newShipment, ...prev]);
+      firestore.collection('shipments').add(newShipmentData);
       handleBackToList();
   };
 
   const updateShipment = (updatedShipment: Shipment) => {
-      setShipments(prev => prev.map(s => s.id === updatedShipment.id ? updatedShipment : s));
+      const { id, ...dataToUpdate } = updatedShipment;
+      firestore.collection('shipments').doc(id).update(dataToUpdate);
       handleBackToList();
   };
 
@@ -2993,158 +3039,189 @@ const App = () => {
 
     const confirmDeleteShipment = () => {
         if (!shipmentToDeleteId) return;
-        setShipments(prev => prev.filter(s => s.id !== shipmentToDeleteId));
-        setShipmentToDeleteId(null); // Close modal
+        firestore.collection('shipments').doc(shipmentToDeleteId).delete();
+        setShipmentToDeleteId(null);
     };
 
     const cancelDeleteShipment = () => {
-        setShipmentToDeleteId(null); // Close modal
+        setShipmentToDeleteId(null);
     };
 
 
-  const handleBulkImport = (newOrUpdatedShipments: Shipment[]) => {
-      setShipments(prevShipments => {
-          const shipmentMap = new Map(prevShipments.map(s => [s.blAwb, s]));
-          
-          newOrUpdatedShipments.forEach(newShipment => {
-              // Overwrite existing record completely with the data from the file.
-              // This allows restoring the state from an exported FUP file.
-              shipmentMap.set(newShipment.blAwb, newShipment);
-          });
-          
-          return Array.from(shipmentMap.values());
-      });
-  };
-
-  const saveFiveW2H = (item: FiveW2H) => {
-      if (item.id) {
-          setFiveW2HData(prev => prev.map(d => d.id === item.id ? item : d));
-      } else {
-          setFiveW2HData(prev => [{ ...item, id: uuidv4() }, ...prev]);
-      }
-  };
-
-  const deleteFiveW2H = (id: string) => {
-      if (window.confirm('Are you sure you want to delete this action item?')) {
-          setFiveW2HData(prev => prev.filter(d => d.id !== id));
-      }
-  };
-  
-  const handleSaveUser = (user: User) => {
-    if (user.id) { // Update
-        setUsers(prev => prev.map(u => {
-            if (u.id === user.id) {
-                // If password is not changed, keep the old one
-                const newPassword = user.password ? user.password : u.password;
-                const updatedUser = { ...user, password: newPassword };
-                // Also update the logged in user's state if they are editing themselves
-                if (loggedInUser?.id === user.id) {
-                    setLoggedInUser(updatedUser);
+    const handleBulkImport = async (newOrUpdatedShipments: Shipment[]) => {
+        const batch = firestore.batch();
+        const shipmentsRef = firestore.collection('shipments');
+    
+        try {
+            const existingShipmentsSnapshot = await shipmentsRef.get();
+            const existingShipmentsMap = new Map<string, string>();
+            existingShipmentsSnapshot.forEach(doc => {
+                const data = doc.data() as Shipment;
+                if (data.blAwb) {
+                    existingShipmentsMap.set(data.blAwb, doc.id);
                 }
-                return updatedUser;
-            }
-            return u;
-        }));
-    } else { // Create
-        setUsers(prev => [{ ...user, id: uuidv4() }, ...prev]);
-    }
-  };
+            });
+    
+            newOrUpdatedShipments.forEach(incomingShipment => {
+                const existingDocId = existingShipmentsMap.get(incomingShipment.blAwb);
+                if (existingDocId) {
+                    const docRef = shipmentsRef.doc(existingDocId);
+                    // Overwrite the document with new data, as per original logic
+                    batch.set(docRef, incomingShipment);
+                } else {
+                    const docRef = shipmentsRef.doc();
+                    batch.set(docRef, incomingShipment);
+                }
+            });
+    
+            await batch.commit();
+            alert('Bulk import successful!');
+        } catch (error) {
+            console.error("Bulk import failed:", error);
+            alert('Bulk import failed. Check the console for details.');
+        }
+    };
+
+    const saveFiveW2H = (item: FiveW2H) => {
+      if (item.id) {
+          const { id, ...data } = item;
+          firestore.collection('fiveW2H').doc(id).update(data);
+      } else {
+          firestore.collection('fiveW2H').add(item);
+      }
+    };
+
+    const deleteFiveW2H = (id: string) => {
+      if (window.confirm('Are you sure you want to delete this action item?')) {
+          firestore.collection('fiveW2H').doc(id).delete();
+      }
+    };
   
-  const handleChangePassword = (newPassword: string) => {
-    if (loggedInUser) {
-        const updatedUser = { ...loggedInUser, password: newPassword };
-        setLoggedInUser(updatedUser);
-        setUsers(prevUsers => prevUsers.map(u => u.id === loggedInUser.id ? updatedUser : u));
-    }
-  };
+    const handleSaveUser = async (user: User) => {
+        try {
+            if (user.id) { // Update existing user
+                const { id, password, ...userData } = user; // Don't save password field
+                await firestore.collection('users').doc(id).update(userData);
+            } else { // Create new user
+                if (!user.password) throw new Error("Password is required for new users.");
+                const userCredential = await auth.createUserWithEmailAndPassword(user.username, user.password);
+                const newUser = userCredential.user;
+                if (newUser) {
+                    await firestore.collection('users').doc(newUser.uid).set({
+                        name: user.name,
+                        username: user.username,
+                        role: user.role,
+                    });
+                }
+            }
+        } catch (error: any) {
+            alert(`Error saving user: ${error.message}`);
+        }
+    };
+  
+    const handleChangePassword = async (newPassword: string) => {
+        if (auth.currentUser) {
+            await auth.currentUser.updatePassword(newPassword);
+        } else {
+            throw new Error("No user is currently signed in.");
+        }
+    };
 
-  const handleDeleteUser = (id: string) => {
-    const userToDelete = users.find(u => u.id === id);
-    if (!userToDelete) return; // Should not happen
+    const handleDeleteUser = (id: string) => {
+        const userToDelete = users.find(u => u.id === id);
+        if (!userToDelete) return;
 
-    if (loggedInUser?.id === id) {
-        alert("You cannot delete your own account.");
-        return;
-    }
-
-    if (userToDelete.role === 'Admin') {
-        const adminCount = users.filter(u => u.role === 'Admin').length;
-        if (adminCount <= 1) {
-            alert("You cannot delete the last admin user.");
+        if (loggedInUser?.id === id) {
+            alert("You cannot delete your own account.");
             return;
         }
+
+        if (userToDelete.role === 'Admin') {
+            const adminCount = users.filter(u => u.role === 'Admin').length;
+            if (adminCount <= 1) {
+                alert("You cannot delete the last admin user.");
+                return;
+            }
+        }
+
+        if (window.confirm(`Are you sure you want to delete the user "${userToDelete.name}"? This only removes them from the application list, not from the authentication system.`)) {
+            firestore.collection('users').doc(id).delete();
+        }
+    };
+
+    const handleSetExchangeRates = (rates: ExchangeRates) => {
+        firestore.collection('config').doc('exchangeRates').set(rates);
+    };
+
+    const renderView = () => {
+        const viewParts = currentView.split('/');
+        const baseView = viewParts[0];
+
+        switch (baseView) {
+            case 'dashboard':
+                return (
+                    <DashboardPage 
+                        imports={shipments} 
+                        claims={claims} 
+                        tasks={tasks}
+                        exchangeRates={exchangeRates}
+                        setExchangeRates={handleSetExchangeRates}
+                        currentUser={loggedInUser}
+                        onNavigate={handleNavigate}
+                    />
+                );
+            case 'imports':
+                if (viewParts[1] === 'new') return <ImportFormPage onSave={addShipment} onCancel={handleBackToList} />;
+                if (viewParts[1] === 'edit' && selectedShipmentId) {
+                    const imp = shipments.find(s => s.id === selectedShipmentId);
+                    return imp ? <ImportFormPage onSave={updateShipment} onCancel={handleBackToList} existingImport={imp} /> : <ImportListPage imports={shipments} onSelect={handleSelectShipment} onNew={handleNewShipment} onUpdate={updateShipment} onDelete={initiateDeleteShipment} onBulkImport={handleBulkImport} initialFilter={initialImportFilter} onClearInitialFilter={handleClearInitialFilter} />;
+                }
+                if (viewParts[1] === 'detail' && selectedShipmentId) {
+                    const imp = shipments.find(s => s.id === selectedShipmentId);
+                    return imp ? <ImportDetailPage importProcess={imp} onBack={handleBackToList} onEdit={() => handleEditShipment(selectedShipmentId)} /> : <ImportListPage imports={shipments} onSelect={handleSelectShipment} onNew={handleNewShipment} onUpdate={updateShipment} onDelete={initiateDeleteShipment} onBulkImport={handleBulkImport} initialFilter={initialImportFilter} onClearInitialFilter={handleClearInitialFilter} />;
+                }
+                return <ImportListPage imports={shipments} onSelect={handleSelectShipment} onNew={handleNewShipment} onUpdate={updateShipment} onDelete={initiateDeleteShipment} onBulkImport={handleBulkImport} initialFilter={initialImportFilter} onClearInitialFilter={handleClearInitialFilter} />;
+            case 'relatoriofup':
+                return <FUPReportPage shipments={shipments} />;
+            case 'logistics':
+                return <LogisticsPage shipments={shipments} setShipments={setShipments} />;
+            case '5w2hplan':
+                return <FiveW2HPage data={fiveW2HData} onSave={saveFiveW2H} onDelete={deleteFiveW2H} allImports={shipments} allUsers={users} />;
+            case 'team':
+                return <TeamPage users={users} onSave={handleSaveUser} onDelete={handleDeleteUser} currentUser={loggedInUser} />;
+            case 'admin':
+                return <AdminPage user={loggedInUser!} onPasswordChange={handleChangePassword} />;
+            default:
+                 return <DashboardPage imports={shipments} claims={claims} tasks={tasks} exchangeRates={exchangeRates} setExchangeRates={handleSetExchangeRates} currentUser={loggedInUser} onNavigate={handleNavigate} />;
+        }
+    };
+    
+    if (authLoading) {
+        return <div className="login-screen"><Loader2Icon /></div>;
     }
 
-    if (window.confirm(`Are you sure you want to delete the user "${userToDelete.name}"? This action cannot be undone.`)) {
-        setUsers(prevUsers => prevUsers.filter(u => u.id !== id));
+    if (!loggedInUser) {
+        return <LoginScreen onLogin={handleLogin} error={loginError} />;
     }
-  };
 
-  const renderView = () => {
-    const viewParts = currentView.split('/');
-    const baseView = viewParts[0];
-
-    switch (baseView) {
-        case 'dashboard':
-            return (
-                <DashboardPage 
-                    imports={shipments} 
-                    claims={claims} 
-                    tasks={tasks}
-                    exchangeRates={exchangeRates}
-                    setExchangeRates={setExchangeRates}
-                    currentUser={loggedInUser}
-                    onNavigate={handleNavigate}
+    return (
+        <div className="app-container">
+          <Sidebar onNavigate={handleNavigate} activeView={currentView} onLogout={handleLogout} loggedInUser={loggedInUser}/>
+          <main className="main-content">
+            {renderView()}
+          </main>
+          {shipmentToDeleteId && (
+                <ConfirmationModal
+                    title="Confirm Deletion"
+                    message="Are you sure you want to delete this BL/process? This action cannot be undone."
+                    onConfirm={confirmDeleteShipment}
+                    onCancel={cancelDeleteShipment}
+                    confirmText="Yes, Delete"
+                    cancelText="Cancel"
                 />
-            );
-        case 'imports':
-            if (viewParts[1] === 'new') return <ImportFormPage onSave={addShipment} onCancel={handleBackToList} />;
-            if (viewParts[1] === 'edit' && selectedShipmentId) {
-                const imp = shipments.find(s => s.id === selectedShipmentId);
-                return imp ? <ImportFormPage onSave={updateShipment} onCancel={handleBackToList} existingImport={imp} /> : <ImportListPage imports={shipments} onSelect={handleSelectShipment} onNew={handleNewShipment} onUpdate={updateShipment} onDelete={initiateDeleteShipment} onBulkImport={handleBulkImport} initialFilter={initialImportFilter} onClearInitialFilter={handleClearInitialFilter} />;
-            }
-            if (viewParts[1] === 'detail' && selectedShipmentId) {
-                const imp = shipments.find(s => s.id === selectedShipmentId);
-                return imp ? <ImportDetailPage importProcess={imp} onBack={handleBackToList} onEdit={() => handleEditShipment(selectedShipmentId)} /> : <ImportListPage imports={shipments} onSelect={handleSelectShipment} onNew={handleNewShipment} onUpdate={updateShipment} onDelete={initiateDeleteShipment} onBulkImport={handleBulkImport} initialFilter={initialImportFilter} onClearInitialFilter={handleClearInitialFilter} />;
-            }
-            return <ImportListPage imports={shipments} onSelect={handleSelectShipment} onNew={handleNewShipment} onUpdate={updateShipment} onDelete={initiateDeleteShipment} onBulkImport={handleBulkImport} initialFilter={initialImportFilter} onClearInitialFilter={handleClearInitialFilter} />;
-        case 'relatoriofup':
-            return <FUPReportPage shipments={shipments} />;
-        case 'logistics':
-            return <LogisticsPage shipments={shipments} setShipments={setShipments} />;
-        case '5w2hplan':
-            return <FiveW2HPage data={fiveW2HData} onSave={saveFiveW2H} onDelete={deleteFiveW2H} allImports={shipments} allUsers={users} />;
-        case 'team':
-            return <TeamPage users={users} onSave={handleSaveUser} onDelete={handleDeleteUser} />;
-        case 'admin':
-            return <AdminPage user={loggedInUser!} onPasswordChange={handleChangePassword} />;
-        default:
-             return <DashboardPage imports={shipments} claims={claims} tasks={tasks} exchangeRates={exchangeRates} setExchangeRates={setExchangeRates} currentUser={loggedInUser} onNavigate={handleNavigate} />;
-    }
-  };
-
-  if (!loggedInUser) {
-    return <LoginScreen onLogin={handleLogin} error={loginError} />;
-  }
-
-  return (
-    <div className="app-container">
-      <Sidebar onNavigate={handleNavigate} activeView={currentView} onLogout={handleLogout} loggedInUser={loggedInUser}/>
-      <main className="main-content">
-        {renderView()}
-      </main>
-      {shipmentToDeleteId && (
-            <ConfirmationModal
-                title="Confirm Deletion"
-                message="Are you sure you want to delete this BL/process? This action cannot be undone."
-                onConfirm={confirmDeleteShipment}
-                onCancel={cancelDeleteShipment}
-                confirmText="Yes, Delete"
-                cancelText="Cancel"
-            />
-        )}
-    </div>
-  );
+            )}
+        </div>
+    );
 };
 
 // --- FILE PARSERS ---
@@ -3223,8 +3300,7 @@ const parseGeneralShipmentFile = (jsonData: any[]): { data: Shipment[], error: s
             }
             
             const newShipment: Partial<Shipment> = {
-                blAwb: String(blAwbValue).trim(),
-                id: uuidv4(), // Assign a new ID for every row from file
+                blAwb: String(blAwbValue).trim()
             };
 
             for (const rawHeader in row) {
